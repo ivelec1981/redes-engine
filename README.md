@@ -3,8 +3,8 @@
 > **Motor open-source para diseño, simulación y operación de redes eléctricas de distribución.**
 > Grafo unificado MT+BT+Trafo+VE+BESS · Análisis 8760h · Host Capacity · Compliance ARCERNNR · Reportes ejecutivos PDF/Word · API REST + Web Console.
 
-[![CI](https://github.com/your-org/redes-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/redes-engine/actions/workflows/ci.yml)
-[![Docker](https://github.com/your-org/redes-engine/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/your-org/redes-engine/actions/workflows/docker-publish.yml)
+[![CI](https://github.com/ivelec1981/redes-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/ivelec1981/redes-engine/actions/workflows/ci.yml)
+[![Docker](https://github.com/ivelec1981/redes-engine/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/ivelec1981/redes-engine/actions/workflows/docker-publish.yml)
 [![Tests](https://img.shields.io/badge/tests-189%20passing-brightgreen)]()
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-yellow)]()
@@ -29,7 +29,7 @@ Los ingenieros de distribución eléctrica en Latinoamérica trabajan con:
 ### 🐳 Local con Docker — 1 comando
 
 ```bash
-git clone https://github.com/<your-org>/redes-engine.git
+git clone https://github.com/ivelec1981/redes-engine.git
 cd redes-engine
 docker compose up
 ```
@@ -48,16 +48,16 @@ Abre el navegador en **http://localhost:8000**:
 | **Render** | Conectar repo en dashboard | `*.onrender.com` |
 | **VPS propio** | `docker compose --profile production up -d` | dominio propio + HTTPS |
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https%3A%2F%2Fgithub.com%2Fyour-org%2Fredes-engine)
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2Fyour-org%2Fredes-engine)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https%3A%2F%2Fgithub.com%2Fivelec1981%2Fredes-engine)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2Fivelec1981%2Fredes-engine)
 
 Guía completa de despliegue en [`DEPLOYMENT.md`](DEPLOYMENT.md) (todas las plataformas + Kubernetes + hardening producción).
 
 ### 📦 Imagen pre-construida (sin clonar el repo)
 
 ```bash
-docker pull ghcr.io/<your-org>/redes-engine:latest
-docker run -p 8000:8000 ghcr.io/<your-org>/redes-engine:latest
+docker pull ghcr.io/ivelec1981/redes-engine:latest
+docker run -p 8000:8000 ghcr.io/ivelec1981/redes-engine:latest
 ```
 
 ---
@@ -442,7 +442,7 @@ MIT — uso libre comercial y privado, sin garantía.
 
 ## 📬 Contacto
 
-- **Issues / bugs**: [GitHub Issues](https://github.com/<your-org>/redes-engine/issues)
+- **Issues / bugs**: [GitHub Issues](https://github.com/ivelec1981/redes-engine/issues)
 - **Email**: redes-engine@example.com
 
 ---

@@ -127,7 +127,7 @@ curl -fsSL https://get.docker.com | sh
 usermod -aG docker $USER
 
 # 3. Clonar repo
-git clone https://github.com/your-org/redes-engine.git
+git clone https://github.com/ivelec1981/redes-engine.git
 cd redes-engine
 
 # 4. Levantar con perfil producción (incluye nginx)
@@ -176,7 +176,7 @@ spec:
     spec:
       containers:
       - name: api
-        image: ghcr.io/your-org/redes-engine:latest
+        image: ghcr.io/ivelec1981/redes-engine:latest
         ports: [{ containerPort: 8000 }]
         livenessProbe:
           httpGet: { path: /api/v1/health, port: 8000 }
@@ -211,9 +211,9 @@ disponible públicamente:
 
 ```bash
 # Pull directo (sin clonar el repo)
-docker pull ghcr.io/your-org/redes-engine:latest
+docker pull ghcr.io/ivelec1981/redes-engine:latest
 
-docker run -p 8000:8000 ghcr.io/your-org/redes-engine:latest
+docker run -p 8000:8000 ghcr.io/ivelec1981/redes-engine:latest
 ```
 
 Para usar en `docker-compose.yml` sin build:
@@ -221,7 +221,7 @@ Para usar en `docker-compose.yml` sin build:
 ```yaml
 services:
   api:
-    image: ghcr.io/your-org/redes-engine:latest   # en vez de build
+    image: ghcr.io/ivelec1981/redes-engine:latest   # en vez de build
     # ...
 ```
 
@@ -331,5 +331,5 @@ En arquitecturas exóticas (RISC-V, etc.) puede fallar — usar la build amd64.
 
 ## ⚓ Soporte
 
-- Issues: [GitHub Issues](https://github.com/your-org/redes-engine/issues)
+- Issues: [GitHub Issues](https://github.com/ivelec1981/redes-engine/issues)
 - Email: redes-engine@example.com

@@ -7,7 +7,7 @@ al proyecto de manera efectiva.
 
 ```bash
 # 1. Clonar el repo
-git clone https://github.com/<your-org>/redes-engine.git
+git clone https://github.com/ivelec1981/redes-engine.git
 cd redes-engine
 
 # 2. Crear entorno virtual (recomendado)

@@ -155,7 +155,7 @@ Antes de hacer público, **busca y reemplaza** estas referencias en archivos:
 
 ```powershell
 # En README.md, DEPLOYMENT.md, .github/workflows/*.yml:
-your-org → TU-USUARIO-GITHUB
+ivelec1981 → TU-USUARIO-GITHUB
 example.com → tu-dominio.com (opcional)
 ```
 
@@ -163,7 +163,7 @@ PowerShell quick fix:
 ```powershell
 $me = "TU-USUARIO-GITHUB"
 @("README.md", "DEPLOYMENT.md") | ForEach-Object {
-    (Get-Content $_) -replace 'your-org', $me | Set-Content $_
+    (Get-Content $_) -replace 'ivelec1981', $me | Set-Content $_
 }
 ```
 

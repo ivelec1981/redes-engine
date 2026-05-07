@@ -12,7 +12,7 @@ services:
   - type: web
     name: redes-engine
     runtime: docker
-    repo: https://github.com/your-org/redes-engine
+    repo: https://github.com/ivelec1981/redes-engine
     plan: free                 # cambia a 'starter' o superior para producción
     region: oregon              # más cercano a Latinoamérica (Render no tiene SA)
     dockerfilePath: ./Dockerfile
