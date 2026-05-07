@@ -1,0 +1,75 @@
+{
+  "type": "FeatureCollection",
+  "name": "tramos_bt",
+  "crs": { "type": "name", "properties": { "name": "EPSG:32717" } },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "NUM_SEQ": "L-BT-001",
+        "NODO_I": "P-BT-000",
+        "NODO_J": "P-BT-005",
+        "CONDUCTOR": "AL_1/0AWG",
+        "AMPACIDAD": 200.0,
+        "RESISTENCIA": 0.012,
+        "REACTANCIA": 0.008,
+        "LONGITUD": 25.0
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[763640.0, 9680001.0], [763665.0, 9680010.0]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "NUM_SEQ": "L-BT-002",
+        "NODO_I": "P-BT-005",
+        "NODO_J": "P-BT-010",
+        "CONDUCTOR": "AL_1/0AWG",
+        "AMPACIDAD": 150.0,
+        "RESISTENCIA": 0.005,
+        "REACTANCIA": 0.003,
+        "LONGITUD": 10.0
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[763665.0, 9680010.0], [763665.0, 9680020.0]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "NUM_SEQ": "L-BT-003",
+        "NODO_I": "P-BT-005",
+        "NODO_J": "P-BT-011",
+        "CONDUCTOR": "AL_1/0AWG",
+        "AMPACIDAD": 150.0,
+        "RESISTENCIA": 0.010,
+        "REACTANCIA": 0.006,
+        "LONGITUD": 20.0
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[763665.0, 9680010.0], [763665.0, 9680030.0]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "NUM_SEQ": "L-BT-004",
+        "NODO_I": "P-BT-000",
+        "NODO_J": "P-BT-012",
+        "CONDUCTOR": "AL_1/0AWG",
+        "AMPACIDAD": 200.0,
+        "RESISTENCIA": 0.020,
+        "REACTANCIA": 0.013,
+        "LONGITUD": 40.0
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[763640.0, 9680001.0], [763680.0, 9680040.0]]
+      }
+    }
+  ]
+}

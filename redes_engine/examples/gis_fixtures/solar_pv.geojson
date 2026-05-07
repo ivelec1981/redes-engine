@@ -1,0 +1,16 @@
+{
+  "type": "FeatureCollection",
+  "name": "solar_pv",
+  "crs": { "type": "name", "properties": { "name": "EPSG:32717" } },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "NOMBRE": "PV-CASA-A",
+        "POSTE": "P-BT-010",
+        "KW": 5.0
+      },
+      "geometry": { "type": "Point", "coordinates": [763665.0, 9680020.0] }
+    }
+  ]
+}

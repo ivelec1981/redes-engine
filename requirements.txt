@@ -1,0 +1,22 @@
+# ============================================================================
+# redes_engine — runtime dependencies
+# ============================================================================
+
+# ── Core eléctrico ──────────────────────────────────────────────────────────
+opendssdirect.py>=0.7,<1.0          # motor de flujo de potencia EPRI
+pulp>=2.7,<4.0                       # MILP solver (CBC bundled)
+shapely>=2.0,<3.0                    # geometrías (opcional pero recomendado)
+
+# ── API REST + frontend ────────────────────────────────────────────────────
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.27,<1.0         # ASGI server
+pydantic>=2.0,<3.0
+python-multipart>=0.0.7              # uploads de .rsproj
+
+# ── Reportes ejecutivos ────────────────────────────────────────────────────
+reportlab>=4.0,<5.0                  # PDF firmable
+python-docx>=1.0,<2.0                # Word editable
+matplotlib>=3.7,<4.0                 # charts embebidos
+
+# ── Utilidades ─────────────────────────────────────────────────────────────
+# (núcleo del modelo no requiere nada externo)

@@ -1,0 +1,74 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Configuración de herramientas de desarrollo (ruff, pytest, mypy)
+# El paquete sigue distribuyéndose vía setup.py por compatibilidad.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    "tests/",                # los tests usan fixtures con imports raros
+    "redes_engine/examples/qgis_output/",
+    "redes_engine/examples/reports_output/",
+    "redes_engine/examples/hosting_output/",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "W",    # pycodestyle warnings
+    "I",    # isort
+]
+ignore = [
+    "E501",   # line too long (las cadenas largas en docstrings/SQL son OK)
+    "E402",   # module level import not at top (justificado en api/main.py)
+    "F401",   # imports usados en re-exports __init__.py
+    "F541",   # f-string sin placeholder (cosmético)
+    "E741",   # ambiguous variable name (l, I — usado en formulas matemáticas)
+    "E702",   # multiple statements on one line (justificado puntualmente)
+    "E701",   # multiple statements on one line: colon
+    "E401",   # multiple imports on one line (en imports temp)
+    "F841",   # local variable not used (a veces queremos ese binding por claridad)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"redes_engine/__init__.py" = ["F401", "F403"]
+"redes_engine/*/__init__.py" = ["F401", "F403"]
+"redes_engine/api/main.py" = ["E402"]   # imports diferidos justificados
+"redes_engine/api/routers/*.py" = ["E402"]
+
+
+# =============================================================================
+# Pytest
+# =============================================================================
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+
+# =============================================================================
+# Coverage
+# =============================================================================
+[tool.coverage.run]
+source = ["redes_engine"]
+omit = [
+    "*/tests/*",
+    "*/examples/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]

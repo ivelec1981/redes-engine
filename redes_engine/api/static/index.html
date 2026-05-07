@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redes Engine — Web Console</title>
+    <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #1a1d23;
+            color: #e4e7eb;
+        }
+        .layout {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            grid-template-rows: 56px 1fr;
+            height: 100vh;
+        }
+        header {
+            grid-column: 1 / -1;
+            background: linear-gradient(90deg, #1a237e 0%, #283593 100%);
+            color: white;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            font-weight: 600;
+            font-size: 18px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            z-index: 1;
+        }
+        header .badge {
+            margin-left: 12px;
+            font-size: 11px;
+            background: rgba(255,255,255,0.15);
+            padding: 4px 10px;
+            border-radius: 10px;
+            font-weight: 400;
+        }
+        header .right {
+            margin-left: auto;
+            font-size: 12px;
+            opacity: 0.85;
+        }
+        .sidebar {
+            background: #232930;
+            overflow-y: auto;
+            padding: 16px;
+            border-right: 1px solid #303841;
+        }
+        .panel {
+            background: #2c3440;
+            border-radius: 6px;
+            padding: 14px;
+            margin-bottom: 12px;
+            border: 1px solid #3a424f;
+        }
+        .panel h3 {
+            margin: 0 0 10px;
+            color: #64b5f6;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+        button {
+            background: #1565c0;
+            color: white;
+            border: none;
+            padding: 9px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 12px;
+            margin-right: 6px;
+            margin-top: 4px;
+            transition: background 0.15s;
+        }
+        button:hover { background: #0d47a1; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        button.primary { background: #2e7d32; }
+        button.primary:hover { background: #1b5e20; }
+        button.danger { background: #c62828; }
+        button.danger:hover { background: #8e0000; }
+        button.small { padding: 5px 10px; font-size: 11px; }
+
+        select, input {
+            background: #1a1d23;
+            color: #e4e7eb;
+            border: 1px solid #3a424f;
+            padding: 7px 9px;
+            border-radius: 3px;
+            width: 100%;
+            font-size: 12px;
+        }
+        label { font-size: 11px; opacity: 0.85; display: block; margin-top: 8px; margin-bottom: 3px; }
+
+        .map-container { position: relative; }
+        #map { width: 100%; height: 100%; }
+
+        .legend {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            background: rgba(35, 41, 48, 0.95);
+            padding: 10px 14px;
+            border-radius: 4px;
+            font-size: 11px;
+            border: 1px solid #3a424f;
+        }
+        .legend-row { display: flex; align-items: center; margin: 3px 0; }
+        .legend-circle { width: 11px; height: 11px; border-radius: 50%; margin-right: 7px; border: 1px solid #2c3440; }
+        .legend-line { width: 18px; height: 3px; margin-right: 7px; }
+
+        .metric-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px 10px;
+            font-size: 11px;
+        }
+        .metric { padding: 6px 8px; background: #1a1d23; border-radius: 3px; }
+        .metric-value { color: #4fc3f7; font-weight: 600; font-size: 14px; }
+        .metric-label { opacity: 0.7; font-size: 10px; }
+
+        .log {
+            font-family: 'Consolas', monospace;
+            font-size: 11px;
+            background: #1a1d23;
+            padding: 8px;
+            border-radius: 3px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            border: 1px solid #303841;
+        }
+        .badge-ok      { color: #4caf50; }
+        .badge-warning { color: #ffa726; }
+        .badge-violation { color: #ef5350; }
+        .toolbar { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+    </style>
+</head>
+<body>
+<div class="layout">
+    <header>
+        ⚡ Redes Engine
+        <span class="badge">Web Console</span>
+        <span class="right" id="health-status">verificando…</span>
+    </header>
+
+    <aside class="sidebar">
+        <div class="panel">
+            <h3>1. Red activa</h3>
+            <select id="network-select"><option value="">— sin red cargada —</option></select>
+            <div class="toolbar">
+                <button class="small" onclick="loadDemoNetwork()">⚡ Cargar demo</button>
+                <button class="small danger" onclick="deleteCurrent()">🗑 Eliminar</button>
+                <button class="small" onclick="refreshNetworks()">🔄</button>
+            </div>
+            <div id="net-info" style="margin-top: 8px; font-size: 11px; opacity: 0.85;"></div>
+        </div>
+
+        <div class="panel">
+            <h3>2. Análisis</h3>
+            <button class="primary" onclick="runSolve()">⚡ Resolver flujo</button>
+            <button onclick="runHosting()">🏠 Host Capacity</button>
+            <button onclick="runTimeseries()">⏱ Análisis 24h</button>
+        </div>
+
+        <div class="panel">
+            <h3>2b. Editor de Assets</h3>
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
+                <input type="checkbox" id="edit-mode" onchange="toggleEditMode()" style="width:auto;margin:0">
+                Modo edición (clic en bus → agregar asset)
+            </label>
+            <div class="toolbar">
+                <button class="small" onclick="downloadProject()">💾 Guardar .rsproj</button>
+                <button class="small" onclick="document.getElementById('upload-input').click()">📂 Cargar .rsproj</button>
+                <input type="file" id="upload-input" accept=".rsproj,.json" style="display:none" onchange="uploadProject(event)">
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>3. Resultados</h3>
+            <div class="metric-grid" id="metrics">
+                <div class="metric"><div class="metric-label">Buses</div><div class="metric-value" id="m-buses">–</div></div>
+                <div class="metric"><div class="metric-label">Branches</div><div class="metric-value" id="m-branches">–</div></div>
+                <div class="metric"><div class="metric-label">Demanda kW</div><div class="metric-value" id="m-demand">–</div></div>
+                <div class="metric"><div class="metric-label">Pérdidas %</div><div class="metric-value" id="m-losses">–</div></div>
+                <div class="metric"><div class="metric-label">Violaciones</div><div class="metric-value" id="m-viol">–</div></div>
+                <div class="metric"><div class="metric-label">Trafo pico%</div><div class="metric-value" id="m-trafo">–</div></div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>4. Log</h3>
+            <div class="log" id="log">▸ Listo. Haz clic en "Cargar demo" para empezar.</div>
+        </div>
+    </aside>
+
+    <div class="map-container">
+        <div id="map"></div>
+        <div class="legend">
+            <div style="font-weight:600; margin-bottom: 4px;">Leyenda</div>
+            <div class="legend-row"><span class="legend-circle" style="background:#46c46b;"></span>OK (cumple)</div>
+            <div class="legend-row"><span class="legend-circle" style="background:#f39c12;"></span>Advertencia</div>
+            <div class="legend-row"><span class="legend-circle" style="background:#e74c3c;"></span>Violación</div>
+            <div class="legend-row"><span class="legend-line" style="background:#46c46b;"></span>Línea 0-50%</div>
+            <div class="legend-row"><span class="legend-line" style="background:#f1c40f;"></span>Línea 50-80%</div>
+            <div class="legend-row"><span class="legend-line" style="background:#e67e22;"></span>Línea 80-100%</div>
+            <div class="legend-row"><span class="legend-line" style="background:#c0392b;"></span>Línea >100%</div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de agregar asset -->
+<div id="asset-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center">
+    <div style="background:#232930;border-radius:8px;padding:24px;max-width:480px;width:90%;border:1px solid #3a424f">
+        <h3 style="margin:0 0 14px;color:#64b5f6">➕ Agregar Asset al bus <span id="modal-bus-id">—</span></h3>
+
+        <label>Tipo de asset</label>
+        <select id="modal-asset-type" onchange="updateModalFields()">
+            <option value="load_residencial">🏠 Carga residencial</option>
+            <option value="load_comercial">🏢 Carga comercial</option>
+            <option value="alumbrado">💡 Alumbrado público</option>
+            <option value="ev_ac_l2">🚗 Cargador VE AC Tipo 2</option>
+            <option value="ev_dc_fast">⚡ Cargador VE DC Fast</option>
+            <option value="v2g">🔄 V2G bidireccional</option>
+            <option value="pv_resid">☀ Solar PV residencial</option>
+            <option value="pv_comercial">☀ Solar PV comercial</option>
+            <option value="bess_btm">🔋 BESS Behind-the-Meter</option>
+            <option value="bess_ci">🔋 BESS Comercial</option>
+        </select>
+
+        <label>Modelo del catálogo (opcional, sobrescribe specs)</label>
+        <select id="modal-catalog">
+            <option value="">— Manual / sin catálogo —</option>
+        </select>
+
+        <label>Potencia nominal (kW)</label>
+        <input type="number" id="modal-kw" value="5" min="0.1" step="0.1">
+
+        <label>Capacidad (kWh) — solo BESS / V2G</label>
+        <input type="number" id="modal-kwh" value="" min="0" step="0.1">
+
+        <div style="margin-top:14px;display:flex;justify-content:flex-end;gap:6px">
+            <button onclick="closeAssetModal()">Cancelar</button>
+            <button class="primary" onclick="confirmAddAsset()">✓ Agregar</button>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

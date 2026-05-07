@@ -1,0 +1,116 @@
+name: CI
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ejecuta en cada push a main + en cada PR
+# Ejecuta lint + tests sobre Python 3.10, 3.11, 3.12
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Lint con ruff (rápido, falla temprano)
+  # ─────────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ruff
+        run: pip install "ruff>=0.1,<1.0"
+
+      - name: Run ruff
+        run: ruff check redes_engine/ --output-format=github
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Tests sobre matriz Python
+  # ─────────────────────────────────────────────────────────────────────────
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all,dev]"
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ -v \
+            --cov=redes_engine \
+            --cov-report=xml \
+            --cov-report=term
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v4
+        continue-on-error: true
+        with:
+          file: ./coverage.xml
+          flags: unittests
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Build & smoke-test imagen Docker
+  # ─────────────────────────────────────────────────────────────────────────
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: redes-engine:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true
+
+      - name: Smoke test (health endpoint)
+        run: |
+          docker run -d --name re-test -p 8000:8000 redes-engine:ci
+          sleep 8
+          for i in 1 2 3 4 5; do
+            if curl -fsS http://localhost:8000/api/v1/health; then
+              echo "" && echo "Health OK"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Health check FAILED"
+          docker logs re-test
+          exit 1

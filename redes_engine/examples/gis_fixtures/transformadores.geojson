@@ -1,0 +1,19 @@
+{
+  "type": "FeatureCollection",
+  "name": "transformadores",
+  "crs": { "type": "name", "properties": { "name": "EPSG:32717" } },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "NUM_SEQ": "T-001",
+        "POT_KVA": 75,
+        "KV_PRIM": 22.8,
+        "KV_SEC": 0.220,
+        "IMPEDANCIA": 0.04,
+        "CONEXION": "Dyn1"
+      },
+      "geometry": { "type": "Point", "coordinates": [763640.0, 9680000.0] }
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "type": "FeatureCollection",
+  "name": "tramos_mt",
+  "crs": { "type": "name", "properties": { "name": "EPSG:32717" } },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "NUM_SEQ": "L-MT-001",
+        "NODO_I": "P-MT-001",
+        "NODO_J": "P-MT-002",
+        "CONDUCTOR": "ACSR_4/0AWG",
+        "AMPACIDAD": 340.0,
+        "RESISTENCIA": 0.21,
+        "REACTANCIA": 0.32,
+        "LONGITUD": 80.0
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[763500.0, 9680000.0], [763580.0, 9680000.0]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "NUM_SEQ": "L-MT-002",
+        "NODO_I": "P-MT-002",
+        "NODO_J": "P-MT-003",
+        "CONDUCTOR": "ACSR_1/0AWG",
+        "AMPACIDAD": 240.0,
+        "RESISTENCIA": 0.16,
+        "REACTANCIA": 0.24,
+        "LONGITUD": 60.0
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[763580.0, 9680000.0], [763640.0, 9680000.0]]
+      }
+    }
+  ]
+}

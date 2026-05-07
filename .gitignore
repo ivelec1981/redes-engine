@@ -1,0 +1,116 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# redes_engine — .gitignore
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+wheels/
+develop-eggs/
+.installed.cfg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ── Virtual environments ────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ── Testing & Coverage ──────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.tox/
+.nox/
+.hypothesis/
+
+# ── Linting & Type checking ─────────────────────────────────────────────────
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+
+# ── IDE ─────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.spyderproject
+.spyproject
+.ropeproject
+
+# ── OS ──────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ── Jupyter ─────────────────────────────────────────────────────────────────
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+profile_default/
+ipython_config.py
+
+# ── Outputs generados por ejemplos ──────────────────────────────────────────
+redes_engine/examples/qgis_output/
+redes_engine/examples/reports_output/
+redes_engine/examples/hosting_output/
+redes_engine/examples/*.dss
+redes_engine/api/static/*.map
+
+# ── Logs ────────────────────────────────────────────────────────────────────
+*.log
+logs/
+log/
+*.log.*
+
+# ── Datos pesados / outputs ─────────────────────────────────────────────────
+*.bak
+*.backup
+*.orig
+*.tmp
+*.temp
+data/
+runs/
+mlruns/
+
+# ── Docker volumes (montaje local) ──────────────────────────────────────────
+.docker/
+
+# ── Secrets — IMPORTANTE: nunca commitear credenciales ──────────────────────
+.env
+.env.*
+!.env.example
+secrets.json
+*.pem
+*.key
+deploy/certs/*
+!deploy/certs/.gitkeep
+
+# ── Fly.io / Railway / Render local state ───────────────────────────────────
+.fly/
+.railway/
+fly.local.toml
+
+# ── GitHub local ────────────────────────────────────────────────────────────
+.github/local/

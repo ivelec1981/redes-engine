@@ -1,0 +1,59 @@
+# Cachés y artefactos
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Entornos virtuales
+venv/
+env/
+.venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Docs y media (si existieran)
+docs/_build/
+
+# Archivos de salida generados (no van al contenedor)
+redes_engine/examples/qgis_output/
+redes_engine/examples/reports_output/
+redes_engine/examples/hosting_output/
+redes_engine/examples/*.dss
+
+# Tests (no van al contenedor de producción)
+tests/
+*.test.py
+
+# Archivos temporales / locales
+*.log
+*.tmp
+*.bak
+*.orig
+
+# Datos pesados que no deben ir al contenedor
+*.qgz
+*.gpkg
+*.geodatabase
+data/

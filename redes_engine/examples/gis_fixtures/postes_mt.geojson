@@ -1,0 +1,36 @@
+{
+  "type": "FeatureCollection",
+  "name": "postes_mt",
+  "crs": { "type": "name", "properties": { "name": "EPSG:32717" } },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "NUM_SEQ": "P-MT-001",
+        "VOLTAJE": 22.8,
+        "ALIMENTADOR": "Pastaza-01",
+        "ALTURA": 12,
+        "MATERIAL": "HORMIGON"
+      },
+      "geometry": { "type": "Point", "coordinates": [763500.0, 9680000.0] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "NUM_SEQ": "P-MT-002",
+        "VOLTAJE": 22.8,
+        "ALIMENTADOR": "Pastaza-01"
+      },
+      "geometry": { "type": "Point", "coordinates": [763580.0, 9680000.0] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "NUM_SEQ": "P-MT-003",
+        "VOLTAJE": 22.8,
+        "ALIMENTADOR": "Pastaza-01"
+      },
+      "geometry": { "type": "Point", "coordinates": [763640.0, 9680000.0] }
+    }
+  ]
+}

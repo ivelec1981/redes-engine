@@ -1,0 +1,25 @@
+{
+  "type": "FeatureCollection",
+  "name": "ev_chargers",
+  "crs": { "type": "name", "properties": { "name": "EPSG:32717" } },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "NOMBRE": "EV-CASA-A",
+        "POSTE": "P-BT-010",
+        "KW": 7.4
+      },
+      "geometry": { "type": "Point", "coordinates": [763665.0, 9680020.0] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "NOMBRE": "EV-DC-COMUNAL",
+        "POSTE": "P-BT-012",
+        "KW": 50.0
+      },
+      "geometry": { "type": "Point", "coordinates": [763680.0, 9680040.0] }
+    }
+  ]
+}

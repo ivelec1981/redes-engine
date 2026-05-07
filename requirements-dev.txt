@@ -1,0 +1,10 @@
+# Dependencias de desarrollo (no necesarias en runtime/Docker)
+-r requirements.txt
+
+pytest>=7.4,<9.0
+pytest-cov>=4.1,<6.0
+ruff>=0.1,<1.0                  # linter
+mypy>=1.5,<2.0                  # type checker (opcional)
+
+# Importadores GIS opcionales (si se desea leer Shapefile/GeoPackage)
+pyogrio>=0.7,<1.0

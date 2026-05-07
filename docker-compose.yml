@@ -1,0 +1,77 @@
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║         redes_engine — Docker Compose stack (desarrollo + producción)     ║
+# ║                                                                           ║
+# ║  Uso rápido:                                                              ║
+# ║    docker compose up                       # primer plano                 ║
+# ║    docker compose up -d                    # segundo plano                ║
+# ║    docker compose logs -f api              # ver logs                     ║
+# ║    docker compose down                     # detener                      ║
+# ║                                                                           ║
+# ║  Producción con nginx:                                                    ║
+# ║    docker compose --profile production up -d                              ║
+# ║                                                                           ║
+# ║  Acceso:                                                                  ║
+# ║    Web:      http://localhost:8000                                        ║
+# ║    API docs: http://localhost:8000/docs                                   ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+services:
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # API REST + Web Console (servicio principal)
+  # ───────────────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: redes-engine:latest
+    container_name: redes-engine-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      REDES_ENGINE_ENV: ${REDES_ENGINE_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      # Datos persistentes (proyectos .rsproj, reportes generados)
+      - redes_data:/data
+      # Logs
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      org.opencontainers.image.title: "redes_engine API"
+      org.opencontainers.image.description: "Motor de cálculo de redes eléctricas de distribución"
+      org.opencontainers.image.licenses: "MIT"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Reverse proxy nginx (perfil 'production' — opcional)
+  # ───────────────────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: redes-engine-nginx
+    profiles: ["production"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    labels:
+      org.opencontainers.image.title: "redes_engine Nginx"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Volúmenes persistentes
+# ─────────────────────────────────────────────────────────────────────────────
+volumes:
+  redes_data:
+    driver: local
