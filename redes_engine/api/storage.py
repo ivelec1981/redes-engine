@@ -14,7 +14,7 @@ Para el prototipo basta un singleton dict-based con thread-safety.
 import threading
 import uuid
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional  # noqa: F401
 
 
 # =============================================================================
@@ -32,6 +32,9 @@ class StoredNetwork:
     last_hosting_results: object = None      # HostingCapacityResults
     last_annual_results: object = None       # AnnualResults
     layers_geojson: Dict[str, dict] = field(default_factory=dict)
+    # Workflow v3.0
+    active_domains: List[str] = field(default_factory=list)
+    emitted_docs: List[str] = field(default_factory=list)
 
 
 # =============================================================================

@@ -132,20 +132,29 @@ class TestProjectAPIEndpoints:
     def test_save_and_reload_via_api(self, client):
         # Cargar demo
         nid = client.post("/api/v1/demo/load").json()["id"]
-        # Guardar como .rsproj
+        # Guardar como .rsproj (formato v2.0 = contenedor ZIP)
         res = client.post(
             f"/api/v1/projects/save/{nid}",
             json={"author": "API Test"},
         )
         assert res.status_code == 200
         rsproj_bytes = res.content
-        # Es JSON parseable
-        data = json.loads(rsproj_bytes)
-        assert data["format_version"] == "1.0"
-        assert data["metadata"]["author"] == "API Test"
+        # Es un ZIP (firma "PK")
+        assert rsproj_bytes[:2] == b"PK"
+
+        # Verificar contenido del ZIP
+        import io
+        import zipfile
+        with zipfile.ZipFile(io.BytesIO(rsproj_bytes), "r") as zf:
+            names = set(zf.namelist())
+            assert "manifest.json" in names
+            assert "network.json" in names
+            assert "metadata.json" in names
+            meta = json.loads(zf.read("metadata.json").decode("utf-8"))
+            assert meta["author"] == "API Test"
 
         # Subirlo de vuelta
-        files = {"file": ("test.rsproj", rsproj_bytes, "application/json")}
+        files = {"file": ("test.rsproj", rsproj_bytes, "application/zip")}
         res2 = client.post("/api/v1/projects/load", files=files)
         assert res2.status_code == 201
         assert res2.json()["n_buses"] == 8

@@ -76,6 +76,10 @@ def asset_to_dict(a: Asset) -> Dict[str, Any]:
         "efficiency_discharge": a.efficiency_discharge,
         "capacity_factor": a.capacity_factor,
         "generation_profile": a.generation_profile,
+        # Atributos socioeconómicos
+        "socioeconomic_stratum": a.socioeconomic_stratum,
+        "has_roof_pv_potential": a.has_roof_pv_potential,
+        "roof_area_m2": a.roof_area_m2,
     }
 
 
@@ -128,6 +132,7 @@ def dict_to_branch(d: Dict[str, Any]) -> Branch:
 
 
 def dict_to_asset(d: Dict[str, Any]) -> Asset:
+    s = d.get("socioeconomic_stratum")
     return Asset(
         id=str(d["id"]),
         bus_id=str(d["bus_id"]),
@@ -144,6 +149,9 @@ def dict_to_asset(d: Dict[str, Any]) -> Asset:
         efficiency_discharge=d.get("efficiency_discharge"),
         capacity_factor=d.get("capacity_factor"),
         generation_profile=d.get("generation_profile"),
+        socioeconomic_stratum=int(s) if s is not None else None,
+        has_roof_pv_potential=d.get("has_roof_pv_potential"),
+        roof_area_m2=d.get("roof_area_m2"),
     )
 
 

@@ -251,6 +251,13 @@ class Asset:
     capacity_factor: Optional[float] = None
     generation_profile: Optional[List[float]] = None
 
+    # ── Atributos socioeconómicos (para escenarios estratificados) ──
+    # Ecuador INEC: estratos A=alto, B=medio-alto, C+=medio, C-=medio-bajo, D=bajo
+    # Numérico: 5=A, 4=B, 3=C+, 2=C-, 1=D. None si no aplica.
+    socioeconomic_stratum: Optional[int] = None
+    has_roof_pv_potential: Optional[bool] = None   # disponibilidad de techo solar
+    roof_area_m2: Optional[float] = None
+
     # ── Categorías ───────────────────────────────────────────────────
     def is_load(self) -> bool:
         return self.asset_type in (

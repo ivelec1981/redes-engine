@@ -41,6 +41,8 @@ class ReportContext:
     compliance_report: Any = None
     hosting_results: Any = None
     annual_results: Any = None
+    investment_result: Any = None       # InvestmentResult (engineering.investment)
+    bom_result: Any = None              # BOMResult (engineering.budget)
 
     # Personalización
     include_charts: bool = True
@@ -62,6 +64,14 @@ class ReportContext:
     @property
     def has_annual(self) -> bool:
         return self.annual_results is not None
+
+    @property
+    def has_investment(self) -> bool:
+        return self.investment_result is not None
+
+    @property
+    def has_bom(self) -> bool:
+        return self.bom_result is not None
 
 
 # =============================================================================
@@ -103,6 +113,10 @@ class ReportBuilder:
             sections.append(self._build_annual_section())
         if self.ctx.has_hosting:
             sections.append(self._build_hosting_section())
+        if self.ctx.has_bom:
+            sections.append(self._build_bom_section())
+        if self.ctx.has_investment:
+            sections.append(self._build_investment_section())
         if self.ctx.include_recommendations:
             sections.append(self._build_recommendations_section())
         return sections
@@ -350,10 +364,110 @@ class ReportBuilder:
         return sec
 
     # =========================================================================
+    # Sección: BOM presupuesto
+    # =========================================================================
+    def _build_bom_section(self) -> ReportSection:
+        bom = self.ctx.bom_result
+        sec = ReportSection(title="6. Presupuesto (BOM)")
+        sec.body_paragraphs.append(
+            f"Lista de materiales explosionada desde las Unidades de "
+            f"Propiedad (UP) declaradas. Se procesaron {bom.n_ups_processed} "
+            f"UPs con {bom.n_items_unique} ítems únicos."
+        )
+        sec.body_paragraphs.append(
+            f"Costo directo total: USD {bom.total_cost:,.2f}."
+        )
+        # Top 15 ítems por costo
+        items_sorted = sorted(
+            bom.items.values(),
+            key=lambda b: b.total,
+            reverse=True,
+        )[:15]
+        sec.tables.append({
+            "title": "Top 15 ítems por costo",
+            "headers": ["Código", "Descripción", "Unidad", "Cantidad",
+                        "Precio U.", "Total"],
+            "rows": [
+                [it.item_code, it.description[:40], it.unit,
+                 f"{it.quantity:.2f}",
+                 f"{it.unit_price:,.2f}",
+                 f"{it.total:,.2f}"]
+                for it in items_sorted
+            ],
+        })
+        return sec
+
+    # =========================================================================
+    # Sección: Análisis de inversión
+    # =========================================================================
+    def _build_investment_section(self) -> ReportSection:
+        inv = self.ctx.investment_result
+        sec = ReportSection(title="7. Análisis de Inversión")
+
+        n_years = len(inv.cashflows) - 1
+        intro = (
+            f"Análisis financiero del proyecto a {n_years} años con tasa de "
+            f"descuento {10.0:.1f}% (referencia ARCERNNR / CENACE). "
+            f"Se incluyen costos directos, indirectos, contingencias, O&M, "
+            f"ahorros por reducción de pérdidas y diferimiento de capacidad."
+        )
+        sec.body_paragraphs.append(intro)
+
+        # Métricas resumen
+        rows = [
+            ["CAPEX total (con indirectos)",
+             f"USD {inv.capex_total_usd:,.2f}"],
+            ["Horizonte", f"{n_years} años"],
+            ["VAN (10%)", f"USD {inv.npv_usd:,.2f}"],
+        ]
+        if inv.irr_pct is not None:
+            rows.append(["TIR", f"{inv.irr_pct:.2f}%"])
+        else:
+            rows.append(["TIR", "(no calculable)"])
+        if inv.payback_years is not None:
+            rows.append(["Payback", f"{inv.payback_years:.2f} años"])
+        else:
+            rows.append(["Payback", "> horizonte"])
+        if inv.benefit_cost_ratio is not None:
+            rows.append(["Relación Beneficio/Costo",
+                         f"{inv.benefit_cost_ratio:.2f}"])
+        sec.tables.append({
+            "title": "Indicadores financieros",
+            "headers": ["Métrica", "Valor"],
+            "rows": rows,
+        })
+
+        # Tabla de flujos anuales
+        flow_rows = []
+        cumulative = 0.0
+        for cf in inv.cashflows:
+            cumulative += cf.net_usd
+            flow_rows.append([
+                cf.year,
+                f"{cf.capex_usd:,.0f}" if cf.capex_usd else "—",
+                f"{cf.opex_om_usd:,.0f}" if cf.opex_om_usd else "—",
+                f"{cf.revenue_savings_usd:,.0f}"
+                if cf.revenue_savings_usd else "—",
+                f"{cf.net_usd:,.0f}",
+                f"{cumulative:,.0f}",
+            ])
+        sec.tables.append({
+            "title": "Flujos de caja anuales (USD)",
+            "headers": ["Año", "CAPEX", "OPEX O&M", "Ingreso/Ahorro",
+                        "Neto", "Acumulado"],
+            "rows": flow_rows,
+        })
+
+        # Notas del análisis
+        for note in inv.notes:
+            sec.body_paragraphs.append(note)
+        return sec
+
+    # =========================================================================
     # Sección: Recomendaciones
     # =========================================================================
     def _build_recommendations_section(self) -> ReportSection:
-        sec = ReportSection(title="6. Recomendaciones")
+        sec = ReportSection(title="8. Recomendaciones")
         recs: List[str] = []
 
         # Generar recomendaciones basadas en hallazgos

@@ -22,7 +22,9 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import __version__
-from .routers import analysis, assets, geojson, networks, project_io, reports
+from .routers import (
+    analysis, assets, geojson, networks, project_io, reports, workflow,
+)
 from .schemas.network import HealthOut, NetworkSummaryOut
 from .storage import get_store
 
@@ -73,6 +75,7 @@ app.include_router(reports.router)
 app.include_router(project_io.router)
 app.include_router(assets.router)
 app.include_router(assets.catalogs_router)
+app.include_router(workflow.router)
 
 
 # =============================================================================

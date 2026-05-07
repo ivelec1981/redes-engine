@@ -63,6 +63,13 @@ class Scenario:
     base_load_growth_pct_per_year: float = 3.0
     base_year: int = 2026
     notes: str = ""
+    # Si True, la asignación VE/PV usa muestreo ponderado por estrato
+    # socioeconómico (Asset.socioeconomic_stratum). Si False, usa muestreo
+    # uniforme aleatorio (comportamiento legacy).
+    use_socioeconomic_strata: bool = True
+    # Si True, la potencia y consumo individual de VE/PV se ajusta por estrato
+    # (e.g. estratos altos instalan sistemas mayores).
+    use_stratified_sizing: bool = True
 
     @property
     def years_from_base(self) -> int:
@@ -105,6 +112,14 @@ class Scenario:
         # Importar tipos del paquete principal (evita import circular en module-load)
         from ..core.graph import Asset, AssetType
         from ..core.network import Network as NetType  # solo para anotar
+        from .stratified import (
+            EV_ADOPTION_WEIGHTS,
+            PV_ADOPTION_WEIGHTS,
+            expected_ev_kwh_per_day_for,
+            expected_kwp_for,
+            stratified_sample,
+            stratum_distribution,
+        )
 
         application = ScenarioApplication(scenario=self)
 
@@ -114,6 +129,9 @@ class Scenario:
             if a.asset_type == AssetType.LOAD_RESIDENCIAL
         ]
         n_resid = len(residential_assets)
+
+        # 1.b. Capturar distribución de estratos para el reporte
+        application.stratum_distribution = stratum_distribution(residential_assets)
 
         # 2. Escalar cargas existentes por crecimiento de demanda
         growth = self.base_load_factor
@@ -126,34 +144,60 @@ class Scenario:
         n_ev = int(round(n_resid * self.ev_penetration_pct / 100.0))
         n_pv = int(round(n_resid * self.pv_penetration_pct / 100.0))
 
-        # 4. Asignar VE aleatoriamente a medidores
-        ev_targets = rng.sample(residential_assets, min(n_ev, n_resid))
-        ev_kw_rated = self.ev_avg_kwh_per_day / 4.0   # ~4 horas de carga
+        # 4. Asignar VE
+        if self.use_socioeconomic_strata:
+            ev_targets = stratified_sample(
+                residential_assets, n_ev, EV_ADOPTION_WEIGHTS, rng,
+            )
+        else:
+            ev_targets = rng.sample(residential_assets, min(n_ev, n_resid))
+
         for ld in ev_targets:
             ev_id = f"EV_{ld.bus_id}_synth"
             if ev_id in network.assets:
                 continue
+            # Tamaño individual: si hay estrato y use_stratified_sizing, lo usa;
+            # si no, usa el promedio del escenario.
+            if self.use_stratified_sizing and ld.socioeconomic_stratum is not None:
+                ev_kwh = expected_ev_kwh_per_day_for(ld, self.ev_avg_kwh_per_day)
+            else:
+                ev_kwh = self.ev_avg_kwh_per_day
+            ev_kw_rated = ev_kwh / 4.0   # ~4 horas de carga
             ev = Asset(
                 id=ev_id, bus_id=ld.bus_id,
                 asset_type=AssetType.EV_CHARGER_AC_L2,
                 rated_kw=max(3.7, ev_kw_rated),
                 controllable=True,
                 profile_24h_kw=None,   # se asigna perfil 8760h aparte
+                socioeconomic_stratum=ld.socioeconomic_stratum,
             )
             network.add_asset(ev)
             application.added_evs.append(ev_id)
 
-        # 5. Asignar PV
-        pv_targets = rng.sample(residential_assets, min(n_pv, n_resid))
+        # 5. Asignar PV — requiere techo (si has_roof_pv_potential está definido)
+        if self.use_socioeconomic_strata:
+            pv_targets = stratified_sample(
+                residential_assets, n_pv, PV_ADOPTION_WEIGHTS, rng,
+                require_attribute="has_roof_pv_potential",
+            )
+        else:
+            pv_targets = rng.sample(residential_assets, min(n_pv, n_resid))
+
         for ld in pv_targets:
             pv_id = f"PV_{ld.bus_id}_synth"
             if pv_id in network.assets:
                 continue
+            if self.use_stratified_sizing and ld.socioeconomic_stratum is not None:
+                pv_kwp = expected_kwp_for(ld, self.pv_avg_kwp)
+            else:
+                pv_kwp = self.pv_avg_kwp
             pv = Asset(
                 id=pv_id, bus_id=ld.bus_id,
                 asset_type=AssetType.SOLAR_PV_RESID,
-                rated_kw=self.pv_avg_kwp,
+                rated_kw=pv_kwp,
                 capacity_factor=0.18,
+                socioeconomic_stratum=ld.socioeconomic_stratum,
+                roof_area_m2=ld.roof_area_m2,
             )
             network.add_asset(pv)
             application.added_pvs.append(pv_id)
@@ -193,6 +237,7 @@ class ScenarioApplication:
     added_evs: List[str] = field(default_factory=list)
     added_pvs: List[str] = field(default_factory=list)
     added_bess: List[str] = field(default_factory=list)
+    stratum_distribution: Dict[Optional[int], int] = field(default_factory=dict)
 
     def summary(self) -> str:
         lines = [
@@ -208,8 +253,18 @@ class ScenarioApplication:
             f"({self.scenario.pv_penetration_pct:.1f}% penetración)",
             f"  BESS grid-scale añadidos   : {len(self.added_bess)} "
             f"({self.scenario.bess_grid_capacity_kwh:.0f} kWh)",
-            "═" * 60,
         ]
+        if self.scenario.use_socioeconomic_strata and self.stratum_distribution:
+            lines.append("  Distribución de estratos   :")
+            stratum_labels = {5: "A", 4: "B", 3: "C+", 2: "C-", 1: "D"}
+            for s, lbl in stratum_labels.items():
+                n = self.stratum_distribution.get(s, 0)
+                if n > 0:
+                    lines.append(f"      {lbl:<3} (estrato {s}) : {n}")
+            n_unknown = self.stratum_distribution.get(None, 0)
+            if n_unknown > 0:
+                lines.append(f"      sin estrato        : {n_unknown}")
+        lines.append("═" * 60)
         return "\n".join(lines)
 
 

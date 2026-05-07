@@ -70,6 +70,44 @@ class TestReportBuilder:
         assert "Resumen Ejecutivo" in titles
         assert not any("Flujo de Potencia" in t for t in titles)
 
+    def test_investment_section_appears_when_provided(self):
+        from redes_engine.engineering import (
+            InvestmentAnalyzer, InvestmentAssumptions,
+        )
+        ana = InvestmentAnalyzer(InvestmentAssumptions(horizon_years=5))
+        inv = ana.analyze(
+            capex_direct_usd=180_000,
+            annual_loss_savings_kwh=40_000,
+            annual_capacity_savings_usd=18_000,
+        )
+        ctx = ReportContext(
+            title="Inv", project_name="X",
+            investment_result=inv,
+        )
+        assert ctx.has_investment is True
+        sections = ReportBuilder(ctx).build_all()
+        titles = [s.title for s in sections]
+        assert any("Inversión" in t for t in titles)
+        # Verificar que la sección tiene métricas
+        inv_sec = next(s for s in sections if "Inversión" in s.title)
+        # Indicadores y flujos = 2 tablas
+        assert len(inv_sec.tables) == 2
+
+    def test_bom_section_appears_when_provided(self):
+        from redes_engine.engineering import BudgetEngine, UPItem
+        engine = BudgetEngine(
+            uc_database={"PSC": {"materials": [
+                {"item": "X1", "descripcion": "X", "unidad": "u",
+                 "cantidad": 1},
+            ]}},
+            prices_database={"X1": 50.0},
+        )
+        bom = engine.compute_bom([UPItem(code="PSC", quantity=2)])
+        ctx = ReportContext(title="B", bom_result=bom)
+        assert ctx.has_bom is True
+        sections = ReportBuilder(ctx).build_all()
+        assert any("Presupuesto" in s.title for s in sections)
+
 
 # =============================================================================
 # Charts

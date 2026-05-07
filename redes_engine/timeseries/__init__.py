@@ -28,6 +28,16 @@ from .profiles import (
 )
 from .scenarios import Scenario, ScenarioComparison
 from .solver import TimeSeriesSolver
+from .stratified import (
+    EV_ADOPTION_WEIGHTS,
+    EV_KWH_PER_DAY_BY_STRATUM,
+    PV_ADOPTION_WEIGHTS,
+    PV_KWP_BY_STRATUM,
+    expected_ev_kwh_per_day_for,
+    expected_kwp_for,
+    stratified_sample,
+    stratum_distribution,
+)
 
 __all__ = [
     "ProfileGenerator", "ProfileLibrary",
@@ -35,4 +45,9 @@ __all__ = [
     "Scenario", "ScenarioComparison",
     "TimeSeriesSolver",
     "AnnualResults", "BusAnnualStats", "BranchAnnualStats",
+    # Estratificación socioeconómica
+    "stratified_sample", "stratum_distribution",
+    "EV_ADOPTION_WEIGHTS", "PV_ADOPTION_WEIGHTS",
+    "EV_KWH_PER_DAY_BY_STRATUM", "PV_KWP_BY_STRATUM",
+    "expected_kwp_for", "expected_ev_kwh_per_day_for",
 ]

@@ -72,11 +72,31 @@ class BESSDispatcher(ABC):
         self, hour: int, bess_state: BESSState,
         net_demand_kw: float, pv_generation_kw: float,
         transformer_loading_pct: float,
+        **context,
     ) -> float:
         """
         Devuelve potencia BESS en kW para esta hora (signo: + carga, − descarga).
+
+        Parameters
+        ----------
+        context : dict
+            Información adicional opcional. Las estrategias avanzadas
+            (e.g. GridSupportDispatch) leen:
+                - v_pu : tensión local del bus (pu) — default 1.0
+                - freq_hz : frecuencia (Hz) — default 60.0
         """
         ...
+
+    def get_bess_kvar(
+        self, hour: int, bess_state: BESSState, **context,
+    ) -> float:
+        """
+        Reactiva del BESS (kvar). + inyecta, − absorbe. Default: 0.
+
+        Las estrategias V/f-Support sobreescriben este método para implementar
+        curvas Volt-Var (IEEE 1547 / ARCERNNR Reg. 014/19).
+        """
+        return 0.0
 
     def reset(self) -> None:
         """Llamado al inicio de la simulación."""
@@ -90,7 +110,7 @@ class StaticDispatch(BESSDispatcher):
     """Sigue el profile_24h_kw del asset literalmente."""
 
     def get_bess_power_kw(self, hour, bess_state, net_demand_kw,
-                           pv_generation_kw, transformer_loading_pct):
+                           pv_generation_kw, transformer_loading_pct, **context):
         return bess_state.last_action_kw
 
 
@@ -117,7 +137,7 @@ class PeakShavingDispatch(BESSDispatcher):
         self.low_tariff_hours = low_tariff_hours or [0, 1, 2, 3, 4, 5]
 
     def get_bess_power_kw(self, hour, bess_state, net_demand_kw,
-                           pv_generation_kw, transformer_loading_pct):
+                           pv_generation_kw, transformer_loading_pct, **context):
         h = hour % 24
 
         # 1. Trafo sobrecargado → descargar tan rápido como se pueda
@@ -140,6 +160,204 @@ class PeakShavingDispatch(BESSDispatcher):
                 return target_kw
 
         return 0.0
+
+
+# =============================================================================
+# GRID_SUPPORT — regulación V/f (IEEE 1547-2018, ARCERNNR Reg. 014/19)
+# =============================================================================
+class GridSupportDispatch(BESSDispatcher):
+    """
+    Regulación de tensión y frecuencia (Volt-Watt + Volt-Var + Freq-Watt).
+
+    Cumple IEEE Std 1547-2018 categoría B y la Regulación ARCERNNR 014/19
+    sobre apoyo a la red de generación distribuida y BESS.
+
+    Curvas implementadas
+    --------------------
+    * **Volt-Watt**: limita la potencia activa cuando V está alta.
+        - V ≤ V_w_low (1.05 pu)  → P libre (modo peak-shaving secundario)
+        - V_w_low < V < V_w_high → P interpola linealmente desde libre a 0
+        - V ≥ V_w_high (1.10 pu) → P_carga máxima (absorbe potencia)
+
+    * **Volt-Var**: aporta/absorbe Q según V con deadband simétrica.
+        - V_low_var (0.97) < V < V_high_var (1.03) → Q = 0
+        - V > V_high_var → Q absorbe linealmente hasta -Q_max en V_max (1.10)
+        - V < V_low_var  → Q inyecta linealmente hasta +Q_max en V_min (0.90)
+
+    * **Freq-Watt** (droop primario):
+        - Si f > f_high (60.5 Hz) → cargar BESS para absorber sobre-frecuencia
+        - Si f < f_low  (59.5 Hz) → descargar BESS para apoyar baja frecuencia
+        - Pendiente: 4% (típico Ecuador)
+
+    Prioridades cuando hay conflicto:
+        Frecuencia (urgencia sistémica) > Voltaje (local) > Peak-shaving residual.
+    """
+
+    def __init__(
+        self,
+        # Volt-Watt
+        v_watt_low: float = 1.05,
+        v_watt_high: float = 1.10,
+        # Volt-Var (deadband)
+        v_var_low: float = 0.97,
+        v_var_high: float = 1.03,
+        v_min: float = 0.90,
+        v_max: float = 1.10,
+        q_max_pct_of_p: float = 0.44,    # ratio Q/S (típico cos φ 0.90)
+        # Freq-Watt
+        f_nominal_hz: float = 60.0,
+        f_low_hz: float = 59.5,
+        f_high_hz: float = 60.5,
+        f_droop_pct: float = 4.0,
+        # Peak-shaving residual (cuando V/f normales)
+        enable_peak_shaving: bool = True,
+        peak_threshold_pct: float = 80.0,
+    ):
+        # Validaciones de rangos físicos
+        if not (v_min < v_var_low < v_var_high < v_max):
+            raise ValueError(
+                "Curva Volt-Var inválida: requiere "
+                "v_min < v_var_low < v_var_high < v_max"
+            )
+        if not (v_watt_low < v_watt_high <= v_max):
+            raise ValueError(
+                "Curva Volt-Watt inválida: requiere "
+                "v_watt_low < v_watt_high ≤ v_max"
+            )
+        if not (f_low_hz < f_nominal_hz < f_high_hz):
+            raise ValueError(
+                "Banda de frecuencia inválida: requiere "
+                "f_low_hz < f_nominal_hz < f_high_hz"
+            )
+
+        self.v_watt_low = v_watt_low
+        self.v_watt_high = v_watt_high
+        self.v_var_low = v_var_low
+        self.v_var_high = v_var_high
+        self.v_min = v_min
+        self.v_max = v_max
+        self.q_max_pct_of_p = q_max_pct_of_p
+        self.f_nominal = f_nominal_hz
+        self.f_low = f_low_hz
+        self.f_high = f_high_hz
+        self.f_droop = f_droop_pct
+        self.enable_peak_shaving = enable_peak_shaving
+        self.peak_threshold = peak_threshold_pct
+
+    # =========================================================================
+    # Helpers de cálculo
+    # =========================================================================
+    @staticmethod
+    def _clamp(x: float, lo: float, hi: float) -> float:
+        return max(lo, min(hi, x))
+
+    def _volt_watt_factor(self, v_pu: float) -> float:
+        """
+        Factor multiplicativo a la potencia activa de descarga [0, 1] según V.
+
+        Devuelve 1.0 (sin restricción) cuando V ≤ v_watt_low,
+        y 0.0 (potencia bloqueada) cuando V ≥ v_watt_high.
+        """
+        if v_pu <= self.v_watt_low:
+            return 1.0
+        if v_pu >= self.v_watt_high:
+            return 0.0
+        # Interpolación lineal descendente
+        slope = 1.0 / (self.v_watt_high - self.v_watt_low)
+        return 1.0 - slope * (v_pu - self.v_watt_low)
+
+    def _volt_var_kvar(self, v_pu: float, q_max_kvar: float) -> float:
+        """
+        Reactiva objetivo (kvar) — positivo inyecta, negativo absorbe.
+        Curva Volt-Var con deadband simétrica.
+        """
+        if self.v_var_low <= v_pu <= self.v_var_high:
+            return 0.0
+        if v_pu > self.v_var_high:
+            # Absorbe Q (signo negativo) para bajar tensión
+            frac = (v_pu - self.v_var_high) / max(
+                self.v_max - self.v_var_high, 1e-6
+            )
+            return -q_max_kvar * self._clamp(frac, 0.0, 1.0)
+        # v_pu < v_var_low → inyecta Q (signo positivo)
+        frac = (self.v_var_low - v_pu) / max(
+            self.v_var_low - self.v_min, 1e-6
+        )
+        return q_max_kvar * self._clamp(frac, 0.0, 1.0)
+
+    def _freq_watt_kw(self, freq_hz: float, p_max_kw: float) -> Optional[float]:
+        """
+        Potencia activa por frecuencia. Devuelve None si está dentro de banda
+        muerta (no hay acción de frecuencia).
+
+        Convención BESS: positivo = carga (absorbe), negativo = descarga.
+        """
+        if self.f_low <= freq_hz <= self.f_high:
+            return None
+        # Pendiente droop: 1% de P por (f_droop_pct/100 * f_nominal) Hz
+        df_per_pu = (self.f_droop / 100.0) * self.f_nominal
+        if freq_hz > self.f_high:
+            # Sobre-frecuencia → cargar (absorber generación excedente)
+            df = freq_hz - self.f_high
+            frac = self._clamp(df / df_per_pu, 0.0, 1.0)
+            return p_max_kw * frac
+        # Baja frecuencia → descargar
+        df = self.f_low - freq_hz
+        frac = self._clamp(df / df_per_pu, 0.0, 1.0)
+        return -p_max_kw * frac
+
+    # =========================================================================
+    # Interfaz BESSDispatcher
+    # =========================================================================
+    def get_bess_power_kw(self, hour, bess_state, net_demand_kw,
+                           pv_generation_kw, transformer_loading_pct, **context):
+        v_pu = float(context.get("v_pu", 1.0))
+        freq_hz = float(context.get("freq_hz", self.f_nominal))
+
+        # 1. PRIORIDAD 1 — Frecuencia (sistémica)
+        freq_target = self._freq_watt_kw(freq_hz, bess_state.rated_kw)
+        if freq_target is not None:
+            if freq_target > 0:
+                return min(freq_target, bess_state.can_charge_kw())
+            return -min(-freq_target, bess_state.can_discharge_kw())
+
+        # 2. PRIORIDAD 2 — Volt-Watt (limita descarga si V alta)
+        vw_factor = self._volt_watt_factor(v_pu)
+
+        # Si V muy baja: descargar para subir tensión (freq-watt-style)
+        if v_pu < self.v_var_low - 0.02:   # 0.95 pu por defecto
+            severity = self._clamp(
+                (self.v_var_low - 0.02 - v_pu) / 0.05, 0.0, 1.0,
+            )
+            target = bess_state.can_discharge_kw() * severity
+            return -target
+
+        # 3. Acción residual: peak-shaving + V-Watt clipping
+        residual = 0.0
+        if self.enable_peak_shaving:
+            if transformer_loading_pct > self.peak_threshold:
+                excess_pct = transformer_loading_pct - self.peak_threshold
+                discharge = bess_state.can_discharge_kw() * min(
+                    1.0, excess_pct / 20.0,
+                )
+                residual = -discharge * vw_factor   # V-Watt limita descarga
+            else:
+                # Cargar con sobrante PV si V no es alta
+                pv_surplus = pv_generation_kw - net_demand_kw
+                if pv_surplus > 0.5 and v_pu < self.v_watt_high:
+                    residual = min(pv_surplus, bess_state.can_charge_kw())
+
+        return residual
+
+    def get_bess_kvar(self, hour, bess_state, **context):
+        """
+        Q (kvar) de soporte de tensión. Independiente de la potencia activa
+        (BESS opera en cuadrante 4Q).
+        """
+        v_pu = float(context.get("v_pu", 1.0))
+        # Q_max disponible: ratio del rated apparent power
+        q_max = bess_state.rated_kw * self.q_max_pct_of_p
+        return self._volt_var_kvar(v_pu, q_max)
 
 
 # =============================================================================
@@ -289,7 +507,7 @@ class MILPDailyDispatch(BESSDispatcher):
         self._current_day = day
 
     def get_bess_power_kw(self, hour, bess_state, net_demand_kw,
-                           pv_generation_kw, transformer_loading_pct):
+                           pv_generation_kw, transformer_loading_pct, **context):
         h = hour % 24
         plan = self._daily_plan.get(bess_state.asset_id)
         if plan is None or h >= len(plan):
@@ -310,18 +528,24 @@ def create_dispatcher(mode: str, **kwargs) -> BESSDispatcher:
     """
     Construye un dispatcher según el modo.
 
-    Modos válidos: "static" | "peak_shaving" | "milp_daily"
+    Modos válidos:
+        - "static"       — sigue el perfil del asset literalmente
+        - "peak_shaving" — heurístico rule-based (default recomendado)
+        - "grid_support" — V/f-droop IEEE 1547 (Volt-Watt + Volt-Var + Freq-Watt)
+        - "milp_daily"   — optimización MILP diaria (requiere PuLP)
     """
     mode_lower = mode.lower().strip()
     if mode_lower == "static":
         return StaticDispatch()
     if mode_lower == "peak_shaving":
         return PeakShavingDispatch(**kwargs)
+    if mode_lower in ("grid_support", "grid-support", "v_f", "vf"):
+        return GridSupportDispatch(**kwargs)
     if mode_lower == "milp_daily":
         return MILPDailyDispatch(**kwargs)
     raise ValueError(
         f"Modo de dispatch desconocido: {mode}. "
-        "Use 'static', 'peak_shaving' o 'milp_daily'."
+        "Use 'static', 'peak_shaving', 'grid_support' o 'milp_daily'."
     )
 
 
