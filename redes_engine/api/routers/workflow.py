@@ -336,7 +336,7 @@ def get_domains(network_id: str) -> DomainsResponse:
 @router.post("/{network_id}/domains")
 def toggle_domains(network_id: str, req: DomainToggleRequest) -> DomainsResponse:
     """Activa o desactiva dominios para esta red."""
-    stored = _get_or_404(network_id)
+    _get_or_404(network_id)  # valida existencia (404 si no está)
 
     valid_ids = {d[0] for d in DOMAINS_CATALOG}
     invalid = [d for d in req.domain_ids if d not in valid_ids]
@@ -346,17 +346,23 @@ def toggle_domains(network_id: str, req: DomainToggleRequest) -> DomainsResponse
             detail=f"Dominios desconocidos: {invalid}",
         )
 
-    # Estado actual
-    current = set(getattr(stored, "active_domains", []))
-    if not current:
-        current = {d.id for d in _detect_domains(stored) if d.detected_in_network}
+    # read-modify-write de active_domains bajo el lock del store para evitar
+    # lost-updates entre peticiones concurrentes.
+    def _apply(stored: StoredNetwork) -> None:
+        current = set(getattr(stored, "active_domains", []))
+        if not current:
+            current = {
+                d.id for d in _detect_domains(stored) if d.detected_in_network
+            }
+        if req.active:
+            current.update(req.domain_ids)
+        else:
+            current.difference_update(req.domain_ids)
+        stored.active_domains = list(current)
 
-    if req.active:
-        current.update(req.domain_ids)
-    else:
-        current.difference_update(req.domain_ids)
+    get_store().mutate(network_id, _apply)
 
-    stored.active_domains = list(current)
+    stored = _get_or_404(network_id)
     return DomainsResponse(
         network_id=network_id,
         domains=_detect_domains(stored),

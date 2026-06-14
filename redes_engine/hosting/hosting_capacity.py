@@ -255,6 +255,20 @@ class HostingCapacityAnalyzer:
             f"kv={bus.voltage_kv:.4f} kw=0 pf=1.0 model=1"
         )
         try:
+            # Caso base: ¿la red YA viola con 0 kW inyectados? Entonces el
+            # problema es preexistente, no causado por el candidato PV.
+            base_violation = self._first_violation_pv(
+                ghost_name, 0.0, critical_hours, "pv_sierra",
+            )
+            cap.pv_iterations += 1
+            self._iterations += 1
+            if base_violation is not None:
+                cap.pv_hosting_kw = 0.0
+                cap.pv_limiting_factor = LimitingFactor.PRE_EXISTING
+                cap.pv_limiting_hour = base_violation[1]
+                cap.pv_limiting_element = base_violation[2]
+                return
+
             # Test si max passes
             violation = self._first_violation_pv(
                 ghost_name, max_kw, critical_hours, "pv_sierra",
@@ -333,6 +347,19 @@ class HostingCapacityAnalyzer:
             f"kv={bus.voltage_kv:.4f} kw=0 kvar=0 model=1"
         )
         try:
+            # Caso base: ¿la red YA viola con 0 kW de carga adicional?
+            base_violation = self._first_violation_load(
+                ghost_name, 0.0, critical_hours, "ev_residential",
+            )
+            cap.load_iterations += 1
+            self._iterations += 1
+            if base_violation is not None:
+                cap.load_hosting_kw = 0.0
+                cap.load_limiting_factor = LimitingFactor.PRE_EXISTING
+                cap.load_limiting_hour = base_violation[1]
+                cap.load_limiting_element = base_violation[2]
+                return
+
             violation = self._first_violation_load(
                 ghost_name, max_kw, critical_hours, "ev_residential",
             )

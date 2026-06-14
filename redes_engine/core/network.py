@@ -206,10 +206,16 @@ class Network:
     # =========================================================================
 
     def total_load_kw(self, hour: Optional[int] = None) -> float:
-        """Suma de potencia consumida por todas las cargas."""
+        """
+        Suma de potencia consumida por cargas y cargadores VE.
+
+        Excluye el almacenamiento bidireccional (BESS / V2G): su potencia neta
+        depende del despacho (puede inyectar), así que contarlo como "demanda"
+        contaminaría el total. El almacenamiento se modela vía el dispatcher.
+        """
         total = 0.0
         for a in self.assets.values():
-            if a.is_load() or a.is_ev():
+            if (a.is_load() or a.is_ev()) and not a.is_storage():
                 total += a.power_at_hour(hour) if hour is not None else a.rated_kw
         return total
 

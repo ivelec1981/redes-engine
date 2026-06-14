@@ -133,11 +133,19 @@ class Scenario:
         # 1.b. Capturar distribución de estratos para el reporte
         application.stratum_distribution = stratum_distribution(residential_assets)
 
-        # 2. Escalar cargas existentes por crecimiento de demanda
+        # 2. Escalar cargas existentes por crecimiento de demanda.
+        # Idempotente: se guarda el rated_kw BASE la primera vez y siempre se
+        # recomputa desde la base, de modo que reaplicar un escenario (o aplicar
+        # otro) NO compone el crecimiento (growth²). El escalado se aplica solo
+        # a cargas no-VE y no-almacenamiento.
         growth = self.base_load_factor
         for asset in network.assets.values():
-            if asset.is_load() and not asset.is_ev():
-                asset.rated_kw *= growth
+            if asset.is_load() and not asset.is_ev() and not asset.is_storage():
+                base = getattr(asset, "_base_rated_kw", None)
+                if base is None:
+                    base = asset.rated_kw
+                    asset._base_rated_kw = base
+                asset.rated_kw = base * growth
                 application.scaled_loads.append((asset.id, growth))
 
         # 3. Determinar cuántos VE y PV añadir

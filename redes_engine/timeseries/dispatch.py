@@ -98,6 +98,14 @@ class BESSDispatcher(ABC):
         """
         return 0.0
 
+    def needs_voltage_feedback(self) -> bool:
+        """
+        ¿La estrategia requiere la tensión real del bus (post-flujo) para
+        decidir su despacho? Si True, el solver hace un paso predictor-corrector
+        (resuelve sin BESS, lee v_pu, re-despacha y re-resuelve). Default False.
+        """
+        return False
+
     def reset(self) -> None:
         """Llamado al inicio de la simulación."""
         pass
@@ -358,6 +366,12 @@ class GridSupportDispatch(BESSDispatcher):
         # Q_max disponible: ratio del rated apparent power
         q_max = bess_state.rated_kw * self.q_max_pct_of_p
         return self._volt_var_kvar(v_pu, q_max)
+
+    def needs_voltage_feedback(self) -> bool:
+        # Volt-Watt y Volt-Var dependen de la tensión real del bus → el solver
+        # debe hacer el paso predictor-corrector. (Freq-Watt no se ejercita en
+        # un flujo estático, donde la frecuencia es siempre nominal.)
+        return True
 
 
 # =============================================================================

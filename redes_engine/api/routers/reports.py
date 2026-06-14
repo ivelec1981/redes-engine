@@ -107,14 +107,12 @@ def generate_report(network_id: str, req: ReportRequest):
         path = os.path.join(tmpdir, f"{stored.name}_reporte.pdf")
         generate_pdf_report(ctx, path)
         media_type = "application/pdf"
-        if "pdf" not in stored.emitted_docs:
-            stored.emitted_docs.append("pdf")
+        get_store().add_emitted_doc(stored.id, "pdf")
     else:
         path = os.path.join(tmpdir, f"{stored.name}_reporte.docx")
         generate_docx_report(ctx, path)
         media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        if "docx" not in stored.emitted_docs:
-            stored.emitted_docs.append("docx")
+        get_store().add_emitted_doc(stored.id, "docx")
 
     return FileResponse(
         path,

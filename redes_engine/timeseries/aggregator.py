@@ -256,11 +256,14 @@ class AnnualAggregator:
         # Energía/potencia globales
         p_kw = hourly_result.total_power_kw
         losses_kw = hourly_result.total_losses_kw
+        # Potencia neta con signo (+ importa / − exporta). Fallback a la
+        # magnitud si el resultado no la trae (solver no temporal).
+        net_kw = getattr(hourly_result, "net_power_kw", p_kw)
 
         self.energy_served_kwh += p_kw
         self.energy_losses_kwh += losses_kw
-        self.energy_imported_kwh += max(p_kw, 0)
-        self.energy_exported_kwh += max(-p_kw, 0)
+        self.energy_imported_kwh += max(net_kw, 0)
+        self.energy_exported_kwh += max(-net_kw, 0)
 
         self.demand_sum += p_kw
         self.losses_sum += losses_kw

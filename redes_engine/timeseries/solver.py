@@ -126,6 +126,8 @@ class TimeSeriesSolver:
         self._dss_loaded = False
         self._known_loads: List[str] = []
         self._known_gens: List[str] = []
+        self._agg_load_kw = 0.0
+        self._agg_pv_kw = 0.0
 
     # =========================================================================
     # Selección de perfil para un asset
@@ -231,19 +233,29 @@ class TimeSeriesSolver:
                     )
                     agg_pv_kw += new_kw
 
-        # Despacho de BESS según la estrategia
-        self._dispatch_bess_for_hour(hour, agg_load_kw, agg_pv_kw)
+        # Guardar agregados de la hora para el despacho (que se hace en run()
+        # para poder ordenar el paso predictor-corrector cuando aplica).
+        self._agg_load_kw = agg_load_kw
+        self._agg_pv_kw = agg_pv_kw
 
     def _dispatch_bess_for_hour(
         self, hour: int, agg_load_kw: float, agg_pv_kw: float,
+        v_pu_map: Optional[Dict[str, float]] = None,
     ) -> None:
         """
-        Decide la potencia de cada BESS en la hora actual y la aplica al .dss.
+        Decide la potencia (y reactiva) de cada BESS en la hora actual y la
+        aplica al .dss vía el Load ghost (kw>0 carga, kw<0 descarga/inyección).
 
-        En OpenDSS los BESS se modelan como Storage. Para el dispatch,
-        traducimos a Load (positivo=carga) o Generator (positivo=descarga).
-        Como el .dss base ya tiene el BESS como Storage con kw=0 nominal,
-        usamos comandos `Edit Storage.<name> state=charging|discharging kw=...`.
+        El SoC se actualiza EXACTAMENTE una vez por hora (aquí). Para modos
+        con realimentación de tensión (`needs_voltage_feedback`), el solver
+        llama a este método una sola vez con `v_pu_map` ya poblado tras el
+        flujo predictor.
+
+        Parameters
+        ----------
+        v_pu_map : dict {asset_id: v_pu} | None
+            Tensión real del bus de cada BESS (post-flujo predictor). Si None,
+            el dispatcher recibe el default nominal (1.0) vía su contexto.
         """
         # Si no hay BESS, salir rápido
         if not self._bess_states:
@@ -293,22 +305,55 @@ class TimeSeriesSolver:
                     load_24h, pv_24h, trafo_kva=total_kva or 75.0,
                 )
 
+        nominal_freq = getattr(self.dispatcher, "f_nominal", 60.0)
+
         # Para cada BESS, consultar al dispatcher y aplicar
         for asset_id, state in self._bess_states.items():
+            v_pu = (v_pu_map or {}).get(asset_id, 1.0)
             power_kw = self.dispatcher.get_bess_power_kw(
                 hour=hour, bess_state=state,
                 net_demand_kw=net_demand,
                 pv_generation_kw=agg_pv_kw,
                 transformer_loading_pct=trafo_loading_pct,
+                v_pu=v_pu, freq_hz=nominal_freq,
             )
-            # Actualizar SoC (lógica interna)
+            kvar = self.dispatcher.get_bess_kvar(
+                hour=hour, bess_state=state, v_pu=v_pu, freq_hz=nominal_freq,
+            )
+            # Actualizar SoC (lógica interna) — una sola vez por hora
             state.apply_action(power_kw, dt_h=1.0)
 
-            # Aplicar al .dss vía el ghost Load asociado a este BESS
+            # Aplicar al .dss vía el ghost Load asociado a este BESS.
+            # Convención Load OpenDSS: kw>0 consume, kw<0 inyecta;
+            # kvar>0 absorbe reactiva. El dispatcher entrega Q>0 = INYECTAR,
+            # por eso se escribe con signo invertido.
             disp_name = f"{asset_id}_disp"
             dss.Text.Command(
-                f"Edit Load.{disp_name} kw={power_kw:.4f}"
+                f"Edit Load.{disp_name} kw={power_kw:.4f} kvar={-kvar:.4f}"
             )
+
+    def _read_bus_vpu(self, bus_id: str) -> float:
+        """Lee la tensión (pu) promedio de fases de un bus tras el flujo."""
+        target = bus_id.lower()
+        for bus_name in dss.Circuit.AllBusNames():
+            if bus_name.lower() != target:
+                continue
+            dss.Circuit.SetActiveBus(bus_name)
+            voltages = dss.Bus.PuVoltage()
+            mags = []
+            for i in range(0, len(voltages), 2):
+                if i + 1 < len(voltages):
+                    re_, im_ = voltages[i], voltages[i + 1]
+                    mag = (re_ * re_ + im_ * im_) ** 0.5
+                    if mag > 0:
+                        mags.append(mag)
+            return sum(mags) / len(mags) if mags else 1.0
+        return 1.0
+
+    def _zero_bess_ghosts(self) -> None:
+        """Pone los Load ghost de los BESS a 0 (para el flujo predictor)."""
+        for asset_id in self._bess_states:
+            dss.Text.Command(f"Edit Load.{asset_id}_disp kw=0 kvar=0")
 
     # =========================================================================
     # Recolección rápida de resultados (versión ligera para 8760 iteraciones)
@@ -320,10 +365,14 @@ class TimeSeriesSolver:
         """
         result = PowerFlowResult(converged=True,
                                   iterations=dss.Solution.Iterations())
-        # Potencias globales
+        # Potencias globales.
+        # OpenDSS TotalPower() devuelve la potencia en la fuente con convención
+        # negativa cuando el circuito CONSUME (la fuente entrega). Por eso
+        # net_import = -total_p es positivo al importar y negativo al exportar.
         total_p, total_q = dss.Circuit.TotalPower()
         result.total_power_kw = abs(total_p)
         result.total_power_kvar = abs(total_q)
+        result.net_power_kw = -total_p
         losses = dss.Circuit.Losses()
         result.total_losses_kw = losses[0] / 1000.0
         result.total_losses_kvar = losses[1] / 1000.0
@@ -474,13 +523,40 @@ class TimeSeriesSolver:
             self._build_dss()
 
         aggregator = AnnualAggregator()
+        needs_vf = (
+            self.dispatcher.needs_voltage_feedback() and bool(self._bess_states)
+        )
 
         for hour in range(hours):
             try:
                 self._update_for_hour(hour)
-                dss.Solution.Solve()
+
+                if needs_vf:
+                    # Paso PREDICTOR: resolver con BESS en reposo para leer la
+                    # tensión "sin compensar" en cada bus de BESS.
+                    self._zero_bess_ghosts()
+                    dss.Solution.Solve()
+                    if not dss.Solution.Converged():
+                        continue
+                    v_pu_map = {
+                        aid: self._read_bus_vpu(
+                            self.net.assets[aid].bus_id
+                        )
+                        for aid in self._bess_states
+                        if aid in self.net.assets
+                    }
+                    # Paso CORRECTOR: despachar con la tensión real y re-resolver.
+                    self._dispatch_bess_for_hour(
+                        hour, self._agg_load_kw, self._agg_pv_kw, v_pu_map,
+                    )
+                    dss.Solution.Solve()
+                else:
+                    self._dispatch_bess_for_hour(
+                        hour, self._agg_load_kw, self._agg_pv_kw,
+                    )
+                    dss.Solution.Solve()
+
                 if not dss.Solution.Converged():
-                    aggregator.n_hours += 0  # contamos abajo
                     continue
                 hourly_result = self._collect_hourly()
                 aggregator.update(hour, hourly_result)

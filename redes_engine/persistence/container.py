@@ -56,6 +56,44 @@ _ENTRY_CALCULOS   = "calculos.json"
 _ENTRY_CATALOGO   = "catalogo.json"
 _ENTRY_HISTORIAL  = "historial.log"
 
+# Límites anti zip-bomb / DoS al cargar un .rsproj de origen no confiable.
+MAX_RAW_BYTES = 64 * 1024 * 1024          # 64 MB de archivo comprimido
+MAX_UNCOMPRESSED_BYTES = 512 * 1024 * 1024  # 512 MB descomprimidos en total
+MAX_ENTRY_BYTES = 256 * 1024 * 1024       # 256 MB por entrada individual
+MAX_ENTRIES = 64                          # nº de archivos dentro del ZIP
+MAX_COMPRESSION_RATIO = 200.0             # descomprimido/comprimido sospechoso
+
+
+def _guard_zip(zf: "zipfile.ZipFile", raw_size: int) -> None:
+    """
+    Valida un ZIP entrante contra los límites anti zip-bomb. Lanza
+    RSProjectError si excede cualquier umbral, ANTES de descomprimir nada.
+    """
+    infos = zf.infolist()
+    if len(infos) > MAX_ENTRIES:
+        raise RSProjectError(
+            f"Archivo .rsproj rechazado: demasiadas entradas "
+            f"({len(infos)} > {MAX_ENTRIES})"
+        )
+    total_uncompressed = 0
+    for zi in infos:
+        if zi.file_size > MAX_ENTRY_BYTES:
+            raise RSProjectError(
+                f"Archivo .rsproj rechazado: entrada '{zi.filename}' "
+                f"excede {MAX_ENTRY_BYTES} bytes descomprimidos"
+            )
+        total_uncompressed += zi.file_size
+    if total_uncompressed > MAX_UNCOMPRESSED_BYTES:
+        raise RSProjectError(
+            f"Archivo .rsproj rechazado: tamaño descomprimido "
+            f"({total_uncompressed} bytes) excede {MAX_UNCOMPRESSED_BYTES}"
+        )
+    if raw_size > 0 and total_uncompressed / raw_size > MAX_COMPRESSION_RATIO:
+        raise RSProjectError(
+            "Archivo .rsproj rechazado: ratio de compresión sospechoso "
+            f"({total_uncompressed / raw_size:.0f}× > {MAX_COMPRESSION_RATIO:.0f}×)"
+        )
+
 
 # =============================================================================
 # Estructura en memoria del contenedor
@@ -170,8 +208,14 @@ class RSProjectContainer:
     @classmethod
     def from_zip_bytes(cls, data: bytes) -> "RSProjectContainer":
         """Carga un contenedor desde bytes."""
+        if len(data) > MAX_RAW_BYTES:
+            raise RSProjectError(
+                f"Archivo .rsproj rechazado: {len(data)} bytes exceden el "
+                f"máximo de {MAX_RAW_BYTES}"
+            )
         try:
             with zipfile.ZipFile(io.BytesIO(data), "r") as zf:
+                _guard_zip(zf, raw_size=len(data))
                 names = set(zf.namelist())
                 if _ENTRY_NETWORK not in names:
                     raise RSProjectError(
@@ -297,6 +341,13 @@ def load_container(path: str) -> RSProjectContainer:
 
 def load_container_from_bytes(data: bytes) -> RSProjectContainer:
     """Igual que `load_container` pero desde bytes (e.g. upload HTTP)."""
+    if not data:
+        raise RSProjectError("Archivo .rsproj vacío")
+    if len(data) > MAX_RAW_BYTES:
+        raise RSProjectError(
+            f"Archivo .rsproj rechazado: {len(data)} bytes exceden el "
+            f"máximo de {MAX_RAW_BYTES}"
+        )
     if data[:2] == b"PK":
         return RSProjectContainer.from_zip_bytes(data)
     # JSON plano legacy
@@ -304,5 +355,9 @@ def load_container_from_bytes(data: bytes) -> RSProjectContainer:
         d = json.loads(data.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
         raise RSProjectError(f"No es un .rsproj válido: {e}")
+    if not isinstance(d, dict) or "network" not in d:
+        raise RSProjectError(
+            "No es un .rsproj válido: falta la clave 'network'"
+        )
     legacy = RSProject.from_dict(d)
     return RSProjectContainer.from_legacy_project(legacy)

@@ -7,9 +7,26 @@ Estructuras comunes para construir el contexto de un reporte ejecutivo.
 Independiente del formato de salida (PDF/Word).
 """
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+_LEADING_NUMBER_RE = re.compile(r"^\s*\d+\.\s*")
+
+
+def _renumber_sections(sections: "List[ReportSection]") -> "List[ReportSection]":
+    """
+    Numera las secciones de forma contigua, dejando la primera (Resumen
+    Ejecutivo) sin número. Quita cualquier prefijo numérico previo del título
+    para evitar dobles numeraciones o huecos.
+    """
+    counter = 1
+    for sec in sections[1:]:
+        bare = _LEADING_NUMBER_RE.sub("", sec.title)
+        sec.title = f"{counter}. {bare}"
+        counter += 1
+    return sections
 
 
 # =============================================================================
@@ -119,7 +136,12 @@ class ReportBuilder:
             sections.append(self._build_investment_section())
         if self.ctx.include_recommendations:
             sections.append(self._build_recommendations_section())
-        return sections
+
+        # Renumerar las secciones de forma contigua. El Resumen Ejecutivo
+        # (primera sección) queda sin número; el resto se numera 1..N según
+        # las secciones realmente incluidas (evita huecos como 1→7→8 cuando
+        # se omiten secciones intermedias por falta de datos).
+        return _renumber_sections(sections)
 
     # =========================================================================
     # Sección: Resumen ejecutivo

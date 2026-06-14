@@ -166,6 +166,11 @@ class PowerFlowResult:
     iterations: int = 0
     total_power_kw: float = 0.0
     total_power_kvar: float = 0.0
+    # Potencia activa NETA con signo (+ = importación/demanda desde la fuente,
+    # − = exportación neta hacia la red, p.ej. excedente PV). total_power_kw
+    # conserva la magnitud por compatibilidad; net_power_kw permite separar
+    # energía importada vs exportada en el análisis 8760h.
+    net_power_kw: float = 0.0
     total_losses_kw: float = 0.0
     total_losses_kvar: float = 0.0
     losses_pct: float = 0.0

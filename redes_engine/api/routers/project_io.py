@@ -56,13 +56,21 @@ def save_network_as_rsproj(network_id: str, opts: SaveOptions = SaveOptions()):
     if stored is None:
         raise HTTPException(status_code=404, detail="Network not found")
 
+    # Snapshot de resultados + estado de workflow (dominios/docs) para que
+    # al recargar no se pierda el progreso lossless del workflow.
+    calculos = stored_results_to_dict(stored)
+    calculos["workflow"] = {
+        "active_domains": list(stored.active_domains),
+        "emitted_docs": list(stored.emitted_docs),
+    }
+
     container = RSProjectContainer.from_network(
         stored.network,
         author=opts.author,
         company=opts.company,
         description=opts.description,
         crs=stored.crs,
-        calculos=stored_results_to_dict(stored),
+        calculos=calculos,
         historial=_render_default_historial(stored),
     )
 
@@ -73,9 +81,8 @@ def save_network_as_rsproj(network_id: str, opts: SaveOptions = SaveOptions()):
     path = os.path.join(tmpdir, f"{safe_name}.rsproj")
     container.save(path)
 
-    # Track emisión para el workflow
-    if "rsproj" not in stored.emitted_docs:
-        stored.emitted_docs.append("rsproj")
+    # Track emisión para el workflow (atómico bajo el lock del store)
+    get_store().add_emitted_doc(network_id, "rsproj")
 
     return FileResponse(
         path,
@@ -95,7 +102,7 @@ async def load_rsproj_file(file: UploadFile = File(...)):
         - v2.0 ZIP container
         - v1.0 JSON plano (legacy)
     """
-    if file.filename and not (
+    if not file.filename or not (
         file.filename.endswith(".rsproj") or file.filename.endswith(".json")
     ):
         raise HTTPException(
@@ -115,6 +122,18 @@ async def load_rsproj_file(file: UploadFile = File(...)):
         network=container.network,
         crs=container.metadata.crs,
     )
+    # Restaurar estado de workflow lossless (dominios activos y docs emitidos)
+    # que se persistió en el contenedor; los resultados de cálculo en
+    # calculos.json son un snapshot resumen y quedan disponibles en
+    # stored.loaded_calculos para inspección/reportes.
+    if container.calculos:
+        stored.loaded_calculos = container.calculos
+        wf = container.calculos.get("workflow") if isinstance(
+            container.calculos, dict
+        ) else None
+        if isinstance(wf, dict):
+            stored.active_domains = list(wf.get("active_domains", []))
+            stored.emitted_docs = list(wf.get("emitted_docs", []))
     return _to_summary(stored)
 
 

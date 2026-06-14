@@ -240,3 +240,76 @@ class TestValidation:
     def test_invalid_freq_band_raises(self):
         with pytest.raises(ValueError, match="frecuencia"):
             GridSupportDispatch(f_low_hz=60.5, f_nominal_hz=60.0, f_high_hz=59.5)
+
+
+# =============================================================================
+# Integración con el solver — el bug huérfano que esto previene
+# =============================================================================
+class TestSolverIntegration:
+    """
+    Verifica que GridSupportDispatch recibe la tensión REAL del bus desde el
+    solver (paso predictor-corrector) y no el default nominal. Antes del fix,
+    el solver nunca pasaba v_pu ni llamaba get_bess_kvar, así que grid_support
+    degeneraba en peak_shaving en cualquier corrida 8760h.
+    """
+
+    def test_solver_feeds_real_voltage_to_dispatcher(self):
+        pytest.importorskip("opendssdirect", reason="OpenDSS no instalado")
+        from redes_engine.examples.urbanizacion_mixta import (
+            build_urbanizacion_pastaza,
+        )
+        from redes_engine.timeseries import ProfileLibrary, TimeSeriesSolver
+
+        class SpyGridSupport(GridSupportDispatch):
+            def __init__(self):
+                super().__init__()
+                self.seen_vpu = []
+                self.kvar_called = 0
+
+            def get_bess_power_kw(self, hour, bess_state, net_demand_kw,
+                                   pv_generation_kw, transformer_loading_pct,
+                                   **context):
+                self.seen_vpu.append(context.get("v_pu"))
+                return super().get_bess_power_kw(
+                    hour, bess_state, net_demand_kw, pv_generation_kw,
+                    transformer_loading_pct, **context,
+                )
+
+            def get_bess_kvar(self, hour, bess_state, **context):
+                self.kvar_called += 1
+                return super().get_bess_kvar(hour, bess_state, **context)
+
+        profiles = ProfileLibrary.ecuador_default(seed=42)
+        net = build_urbanizacion_pastaza()
+        solver = TimeSeriesSolver(
+            net, profiles=profiles, dispatch_mode="grid_support",
+        )
+        spy = SpyGridSupport()
+        solver.dispatcher = spy          # inyectar el spy antes de run()
+        solver.run(hours=24, scenario_name="grid_support")
+
+        # Debe haberse invocado el despacho con contexto de tensión
+        assert spy.seen_vpu, "El dispatcher nunca fue invocado"
+        # Y al menos una lectura debe ser tensión REAL (≠ default nominal 1.0)
+        real_readings = [v for v in spy.seen_vpu if v is not None and abs(v - 1.0) > 1e-6]
+        assert real_readings, (
+            "El solver nunca pasó v_pu real al dispatcher "
+            "(grid_support seguiría huérfano)"
+        )
+        # Y la reactiva Volt-Var debe haberse consultado
+        assert spy.kvar_called > 0, "get_bess_kvar nunca se invocó"
+
+    def test_grid_support_runs_end_to_end(self):
+        pytest.importorskip("opendssdirect", reason="OpenDSS no instalado")
+        from redes_engine.examples.urbanizacion_mixta import (
+            build_urbanizacion_pastaza,
+        )
+        from redes_engine.timeseries import ProfileLibrary, TimeSeriesSolver
+
+        profiles = ProfileLibrary.ecuador_default(seed=42)
+        net = build_urbanizacion_pastaza()
+        annual = TimeSeriesSolver(
+            net, profiles=profiles, dispatch_mode="grid_support",
+        ).run(hours=48, scenario_name="grid_support")
+        # La corrida completa debe producir resultados válidos
+        assert annual.n_hours_simulated > 0

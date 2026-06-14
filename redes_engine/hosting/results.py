@@ -23,6 +23,7 @@ class LimitingFactor(Enum):
     THERMAL_TRANSFORMER = "thermal_transformer"# trafo > 100%
     REVERSE_FLOW_TRAFO  = "reverse_flow_trafo" # flujo inverso por trafo
     CONVERGENCE_FAIL    = "convergence_fail"   # solver no convergió
+    PRE_EXISTING        = "pre_existing"       # la red YA viola a 0 kW (sin candidato)
 
 
 # =============================================================================
