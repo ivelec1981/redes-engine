@@ -26,6 +26,7 @@ from .project import (
     load_project,
     save_project,
 )
+from .results_full import apply_results_to_stored, results_to_dict
 from .results_io import stored_results_to_dict
 from .serialization import dict_to_network, network_to_dict
 
@@ -37,4 +38,6 @@ __all__ = [
     "RSProjectContainer", "CONTAINER_FORMAT_VERSION",
     "save_container", "load_container", "load_container_from_bytes",
     "stored_results_to_dict",
+    # Serialización COMPLETA (rehidratable) de resultados
+    "results_to_dict", "apply_results_to_stored",
 ]

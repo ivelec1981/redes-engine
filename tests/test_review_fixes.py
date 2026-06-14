@@ -572,3 +572,128 @@ class TestMILPCycleClosure:
         assert len(plan) == 24
         soc_final = self._final_soc(st, plan)
         assert soc_final >= st.soc - 1e-6
+
+
+# =============================================================================
+# Rehidratación COMPLETA de resultados desde .rsproj (objetos vivos)
+# =============================================================================
+class TestResultsRehydration:
+
+    def test_power_flow_round_trip(self):
+        from redes_engine.core.results import (
+            BranchFlowResult, BusVoltageResult, ComplianceStatus,
+            PowerFlowResult,
+        )
+        from redes_engine.persistence.results_full import (
+            power_flow_from_dict, power_flow_to_dict,
+        )
+        r = PowerFlowResult(
+            converged=True, iterations=7, total_power_kw=120.0,
+            net_power_kw=120.0, total_losses_kw=3.5, losses_pct=2.9,
+        )
+        r.bus_voltages["B1"] = BusVoltageResult(
+            bus_id="B1", v_magnitude_kv=22.5, v_pu=0.987, v_drop_pct=1.3,
+            angle_deg=0.0, voltage_nominal_kv=22.8,
+            compliance=ComplianceStatus.OK, is_dc=False,
+        )
+        r.branch_flows["T1"] = BranchFlowResult(
+            branch_id="T1", p_kw=100, q_kvar=10, s_kva=100.5, current_a=50,
+            rated_a=100, loading_pct=50.0, losses_kw=1.0, losses_kvar=0.5,
+            compliance=ComplianceStatus.OK, is_transformer=True,
+        )
+        r2 = power_flow_from_dict(power_flow_to_dict(r))
+        assert r2.converged and r2.iterations == 7
+        assert r2.net_power_kw == 120.0
+        assert r2.bus_voltages["B1"].v_pu == pytest.approx(0.987)
+        assert r2.bus_voltages["B1"].compliance == ComplianceStatus.OK
+        assert r2.branch_flows["T1"].is_transformer is True
+        assert r2.branch_flows["T1"].loading_pct == pytest.approx(50.0)
+
+    def test_compliance_round_trip(self):
+        from redes_engine.core.compliance import (
+            ComplianceFinding, ComplianceReport, NormativeFramework,
+        )
+        from redes_engine.core.results import ComplianceStatus
+        from redes_engine.persistence.results_full import (
+            compliance_from_dict, compliance_to_dict,
+        )
+        c = ComplianceReport(
+            framework=NormativeFramework.ARCERNNR_EC_002_20,
+            overall_status=ComplianceStatus.VIOLATION,
+        )
+        c.findings.append(ComplianceFinding(
+            severity=ComplianceStatus.VIOLATION, category="voltaje",
+            element_id="B9", actual_value=9.1, limit_value=8.0, units="%",
+            message="ΔV excede",
+        ))
+        c2 = compliance_from_dict(compliance_to_dict(c))
+        assert c2.framework == NormativeFramework.ARCERNNR_EC_002_20
+        assert c2.overall_status == ComplianceStatus.VIOLATION
+        assert len(c2.violations()) == 1
+        assert c2.violations()[0].element_id == "B9"
+
+    def test_hosting_and_annual_round_trip(self):
+        from redes_engine.hosting.results import (
+            BusHostingCapacity, HostingCapacityResults, LimitingFactor,
+        )
+        from redes_engine.persistence.results_full import (
+            annual_from_dict, annual_to_dict, hosting_from_dict, hosting_to_dict,
+        )
+        from redes_engine.timeseries.aggregator import (
+            AnnualResults, BusAnnualStats,
+        )
+        h = HostingCapacityResults(network_name="N", n_buses_analyzed=1)
+        h.bus_results["B1"] = BusHostingCapacity(
+            bus_id="B1", voltage_nominal_kv=22.8, pv_hosting_kw=120.0,
+            pv_limiting_factor=LimitingFactor.OVERVOLTAGE,
+            load_hosting_kw=0.0, load_limiting_factor=LimitingFactor.PRE_EXISTING,
+        )
+        h2 = hosting_from_dict(hosting_to_dict(h))
+        assert h2.bus_results["B1"].pv_hosting_kw == pytest.approx(120.0)
+        assert h2.bus_results["B1"].pv_limiting_factor == LimitingFactor.OVERVOLTAGE
+        assert h2.bus_results["B1"].load_limiting_factor == LimitingFactor.PRE_EXISTING
+
+        a = AnnualResults(scenario_name="S", n_hours_simulated=8760,
+                          peak_demand_kw=200.0, total_losses_mwh=12.3)
+        a.bus_stats["B1"] = BusAnnualStats(
+            bus_id="B1", voltage_nominal_kv=22.8, v_pu_min=0.94,
+            hours_in_violation=5,
+        )
+        a2 = annual_from_dict(annual_to_dict(a))
+        assert a2.n_hours_simulated == 8760
+        assert a2.peak_demand_kw == pytest.approx(200.0)
+        assert a2.bus_stats["B1"].hours_in_violation == 5
+
+    def test_api_solve_save_load_restores_live_results(self):
+        pytest.importorskip("opendssdirect", reason="OpenDSS no instalado")
+        pytest.importorskip("fastapi")
+        from fastapi.testclient import TestClient
+
+        from redes_engine.api.main import app
+        from redes_engine.api.storage import get_store
+
+        get_store().clear()
+        try:
+            client = TestClient(app)
+            nid = client.post("/api/v1/demo/load").json()["id"]
+            # Resolver flujo → genera last_solve_result + last_compliance_report
+            res_solve = client.post(f"/api/v1/networks/{nid}/solve", json={})
+            assert res_solve.status_code == 200
+
+            # Guardar y recargar
+            saved = client.post(f"/api/v1/projects/save/{nid}", json={}).content
+            files = {"file": ("p.rsproj", saved, "application/zip")}
+            nid2 = client.post("/api/v1/projects/load", files=files).json()["id"]
+
+            stored2 = get_store().get(nid2)
+            # ANTES del fix: estos quedaban en None al recargar
+            assert stored2.last_solve_result is not None
+            assert stored2.last_solve_result.converged is True
+            assert len(stored2.last_solve_result.bus_voltages) > 0
+            assert stored2.last_compliance_report is not None
+            # El workflow ya refleja la fase de cálculo cumplida tras recargar
+            wf = client.get(f"/api/v1/networks/{nid2}/workflow").json()
+            calc = next(p for p in wf["phases"] if p["id"] == "calculo")
+            assert calc["progress_pct"] > 0
+        finally:
+            get_store().clear()

@@ -24,7 +24,9 @@ from starlette.background import BackgroundTask
 from ...persistence import (
     RSProjectContainer,
     RSProjectError,
+    apply_results_to_stored,
     load_container_from_bytes,
+    results_to_dict,
     stored_results_to_dict,
 )
 from ..routers.networks import _to_summary
@@ -73,6 +75,9 @@ def save_network_as_rsproj(network_id: str, opts: SaveOptions = SaveOptions()):
         description=opts.description,
         crs=stored.crs,
         calculos=calculos,
+        # Resultados COMPLETOS (rehidratables): al recargar se restauran los
+        # objetos vivos last_solve_result/last_compliance_report/etc.
+        results=results_to_dict(stored),
         historial=_render_default_historial(stored),
     )
 
@@ -126,10 +131,7 @@ async def load_rsproj_file(file: UploadFile = File(...)):
         network=container.network,
         crs=container.metadata.crs,
     )
-    # Restaurar estado de workflow lossless (dominios activos y docs emitidos)
-    # que se persistió en el contenedor; los resultados de cálculo en
-    # calculos.json son un snapshot resumen y quedan disponibles en
-    # stored.loaded_calculos para inspección/reportes.
+    # Restaurar estado de workflow lossless (dominios activos y docs emitidos).
     if container.calculos:
         stored.loaded_calculos = container.calculos
         wf = container.calculos.get("workflow") if isinstance(
@@ -138,6 +140,15 @@ async def load_rsproj_file(file: UploadFile = File(...)):
         if isinstance(wf, dict):
             stored.active_domains = list(wf.get("active_domains", []))
             stored.emitted_docs = list(wf.get("emitted_docs", []))
+    # Rehidratar los objetos VIVOS de resultados (PF/compliance/hosting/anual)
+    # desde resultados.json, para que el workflow/dashboard/reportes vuelvan a
+    # tener last_solve_result/last_* tal como estaban al guardar.
+    if container.results:
+        try:
+            apply_results_to_stored(stored, container.results)
+        except (KeyError, TypeError, ValueError):
+            # Un resultado corrupto no debe impedir abrir el proyecto.
+            pass
     return _to_summary(stored)
 
 

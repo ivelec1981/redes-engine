@@ -53,6 +53,7 @@ _ENTRY_MANIFEST   = "manifest.json"
 _ENTRY_METADATA   = "metadata.json"
 _ENTRY_NETWORK    = "network.json"
 _ENTRY_CALCULOS   = "calculos.json"
+_ENTRY_RESULTS    = "resultados.json"
 _ENTRY_CATALOGO   = "catalogo.json"
 _ENTRY_HISTORIAL  = "historial.log"
 
@@ -111,6 +112,10 @@ class RSProjectContainer:
     calculos: Dict[str, Any] = field(default_factory=dict)
     catalogo: Optional[Dict[str, Any]] = None
     historial: str = ""
+    # Resultados COMPLETOS (rehidratables) de PF/compliance/hosting/anual.
+    # Distinto de `calculos` (resumen para display). Permite restaurar los
+    # objetos vivos last_solve_result/last_* al recargar.
+    results: Dict[str, Any] = field(default_factory=dict)
     format_version: str = CONTAINER_FORMAT_VERSION
     engine_version: str = ""
 
@@ -128,6 +133,7 @@ class RSProjectContainer:
         calculos: Optional[Dict[str, Any]] = None,
         catalogo: Optional[Dict[str, Any]] = None,
         historial: str = "",
+        results: Optional[Dict[str, Any]] = None,
     ) -> "RSProjectContainer":
         from .. import __version__
         now = datetime.now().isoformat()
@@ -146,6 +152,7 @@ class RSProjectContainer:
             calculos=calculos or {},
             catalogo=catalogo,
             historial=historial,
+            results=results or {},
             engine_version=__version__,
         )
 
@@ -188,6 +195,11 @@ class RSProjectContainer:
                 _ENTRY_CALCULOS,
                 json.dumps(self.calculos, ensure_ascii=False, indent=indent),
             )
+            if self.results:
+                zf.writestr(
+                    _ENTRY_RESULTS,
+                    json.dumps(self.results, ensure_ascii=False, indent=indent),
+                )
             if self.catalogo is not None:
                 zf.writestr(
                     _ENTRY_CATALOGO,
@@ -226,6 +238,10 @@ class RSProjectContainer:
                 meta_dict = _read_json(zf, _ENTRY_METADATA, default={})
                 net_dict = _read_json(zf, _ENTRY_NETWORK, default=None)
                 calc_dict = _read_json(zf, _ENTRY_CALCULOS, default={})
+                results_dict = (
+                    _read_json(zf, _ENTRY_RESULTS, default={})
+                    if _ENTRY_RESULTS in names else {}
+                )
                 cat_dict = (
                     _read_json(zf, _ENTRY_CATALOGO, default=None)
                     if _ENTRY_CATALOGO in names else None
@@ -253,6 +269,7 @@ class RSProjectContainer:
             calculos=calc_dict or {},
             catalogo=cat_dict,
             historial=historial,
+            results=results_dict or {},
             format_version=manifest.get("format_version", CONTAINER_FORMAT_VERSION),
             engine_version=manifest.get("engine_version", ""),
         )
