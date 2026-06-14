@@ -401,6 +401,7 @@ class MILPDailyDispatch(BESSDispatcher):
         tariff_buy_low: float = 0.04,
         tariff_buy_peak: float = 0.20,
         peak_hours: Optional[List[int]] = None,
+        cycle_closure: bool = True,
     ):
         if not PULP_AVAILABLE:
             raise RuntimeError(
@@ -410,6 +411,11 @@ class MILPDailyDispatch(BESSDispatcher):
         self.tariff_buy_low = tariff_buy_low
         self.tariff_buy_peak = tariff_buy_peak
         self.peak_hours = peak_hours or [18, 19, 20, 21, 22]
+        # Si True, el plan diario no puede terminar con MENOS energía de la que
+        # empezó (soc[23] ≥ soc_inicial). Evita que el MILP vacíe la batería el
+        # día 0 para minimizar su pico, dejándola sin reserva para días
+        # siguientes. Siempre factible: la solución "idle" mantiene soc=soc0.
+        self.cycle_closure = cycle_closure
         self._daily_plan: Dict[str, List[float]] = {}   # asset_id → 24 valores
         self._current_day = -1
 
@@ -461,6 +467,12 @@ class MILPDailyDispatch(BESSDispatcher):
                        - p_d[(b.asset_id, t)] / b.eff_discharge)
                        / b.capacity_kwh
                 )
+
+        # 2.b Cierre de ciclo: no terminar el día por debajo del SoC inicial,
+        # para no agotar la reserva a costa de días posteriores.
+        if self.cycle_closure:
+            for b in bess_list:
+                prob += soc[(b.asset_id, T[-1])] >= b.soc
 
         # 3. Carga del trafo por hora ≤ peak
         for t in T:

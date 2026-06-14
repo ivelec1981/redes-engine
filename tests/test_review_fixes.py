@@ -461,3 +461,114 @@ class TestSerializationCoercion:
         assert a.socioeconomic_stratum is None
         assert a.has_roof_pv_potential is None
         assert a.roof_area_m2 is None
+
+
+# =============================================================================
+# Buses DC excluidos de los límites AC de caída de tensión (ARCERNNR)
+# =============================================================================
+class TestDCBusCompliance:
+
+    def test_bus_is_dc_helpers(self):
+        from redes_engine.core.graph import (
+            Bus, BusType, VoltageLevel,
+        )
+        dc = Bus(id="DC1", geometry=(0, 0), voltage_kv=0.480,
+                 level=VoltageLevel.DC_BUS_480, bus_type=BusType.MEDIDOR)
+        assert dc.is_dc() is True
+        # Un bus DC no se clasifica como BT ni MT (AC)
+        assert dc.is_bt() is False
+        assert dc.is_mt() is False
+
+    def test_dc_bus_voltage_result_not_violation(self):
+        from redes_engine.core.results import BusVoltageResult, ComplianceStatus
+        # Caída enorme (15%) que en BT sería VIOLATION
+        r = BusVoltageResult(
+            bus_id="DC1", v_magnitude_kv=0.40, v_pu=0.85,
+            v_drop_pct=15.0, angle_deg=0.0, voltage_nominal_kv=0.480,
+            is_dc=True,
+        )
+        r.evaluate_compliance()
+        # DC → no evaluado bajo límites AC
+        assert r.compliance == ComplianceStatus.UNKNOWN
+
+    def test_compliance_analyzer_skips_dc_bus(self):
+        from redes_engine.core.compliance import ARCERNNR_EC, ComplianceAnalyzer
+        from redes_engine.core.results import (
+            BusVoltageResult, ComplianceStatus, PowerFlowResult,
+        )
+        result = PowerFlowResult(converged=True)
+        # Bus BT normal con caída severa → VIOLATION
+        result.bus_voltages["B1"] = BusVoltageResult(
+            bus_id="B1", v_magnitude_kv=0.20, v_pu=0.85, v_drop_pct=15.0,
+            angle_deg=0.0, voltage_nominal_kv=0.22, is_dc=False,
+        )
+        # Bus DC con la misma caída → NO debe contar como violación
+        result.bus_voltages["DC1"] = BusVoltageResult(
+            bus_id="DC1", v_magnitude_kv=0.40, v_pu=0.85, v_drop_pct=15.0,
+            angle_deg=0.0, voltage_nominal_kv=0.480, is_dc=True,
+        )
+        report = ComplianceAnalyzer(ARCERNNR_EC).analyze(result)
+        violated_ids = {f.element_id for f in report.violations()
+                        if f.category == "voltaje"}
+        assert "B1" in violated_ids
+        assert "DC1" not in violated_ids
+
+
+# =============================================================================
+# MILP diario: cierre de ciclo (no agota la batería)
+# =============================================================================
+class TestMILPCycleClosure:
+
+    def _final_soc(self, state, plan):
+        """Reconstruye el SoC final aplicando el plan horario."""
+        soc = state.soc
+        for p in plan:
+            if p > 0:       # carga
+                soc += state.eff_charge * p / state.capacity_kwh
+            elif p < 0:     # descarga
+                soc += p / state.eff_discharge / state.capacity_kwh
+        return soc
+
+    def test_cycle_closure_prevents_drain(self):
+        pytest.importorskip("pulp", reason="PuLP no instalado")
+        from redes_engine.timeseries.dispatch import BESSState, MILPDailyDispatch
+
+        def _state():
+            return BESSState(asset_id="B", capacity_kwh=200.0, rated_kw=50.0,
+                             soc=0.6, soc_min=0.2, soc_max=0.95)
+
+        # Escenario con un pico marcado a la hora 19 (incentiva descargar)
+        load = [50.0] * 24
+        load[19] = 300.0
+        pv = [0.0] * 24
+
+        # CON cierre de ciclo: el SoC final no debe caer por debajo del inicial
+        d_closed = MILPDailyDispatch(objective="loading", cycle_closure=True)
+        st = _state()
+        plan_closed = d_closed._solve_day(0, {"B": st}, load, pv, 100.0)["B"]
+        soc_closed = self._final_soc(st, plan_closed)
+        assert soc_closed >= st.soc - 1e-6, (
+            f"cycle_closure no respetado: soc_final={soc_closed:.3f} < {st.soc}"
+        )
+
+        # SIN cierre: se permite terminar por debajo (agotando reserva)
+        d_open = MILPDailyDispatch(objective="loading", cycle_closure=False)
+        st2 = _state()
+        plan_open = d_open._solve_day(0, {"B": st2}, load, pv, 100.0)["B"]
+        soc_open = self._final_soc(st2, plan_open)
+        # El caso sin cierre termina con SoC menor o igual que el cerrado
+        assert soc_open <= soc_closed + 1e-6
+
+    def test_cycle_closure_always_feasible_with_idle(self):
+        # Aun sin margen para mover energía, el cierre es factible (idle).
+        pytest.importorskip("pulp", reason="PuLP no instalado")
+        from redes_engine.timeseries.dispatch import BESSState, MILPDailyDispatch
+
+        st = BESSState(asset_id="B", capacity_kwh=10.0, rated_kw=5.0,
+                       soc=0.5, soc_min=0.45, soc_max=0.55)  # margen mínimo
+        d = MILPDailyDispatch(objective="loading", cycle_closure=True)
+        plan = d._solve_day(0, {"B": st}, [10.0] * 24, [0.0] * 24, 50.0)["B"]
+        # Debe devolver un plan de 24 valores sin lanzar (factible)
+        assert len(plan) == 24
+        soc_final = self._final_soc(st, plan)
+        assert soc_final >= st.soc - 1e-6

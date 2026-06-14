@@ -59,15 +59,20 @@ class BusVoltageResult:
     angle_deg: float
     voltage_nominal_kv: float
     compliance: ComplianceStatus = ComplianceStatus.UNKNOWN
+    # Bus de corriente continua (fast charging): excluido de los límites AC.
+    is_dc: bool = False
 
     def is_mt(self) -> bool:
-        return self.voltage_nominal_kv >= 1.0
+        return (not self.is_dc) and self.voltage_nominal_kv >= 1.0
 
     def evaluate_compliance(self,
                              mt_limit_pct: float = 5.0,
                              bt_limit_pct: float = 8.0) -> ComplianceStatus:
         """
         Evalúa cumplimiento según regulación ARCERNNR.
+
+        Los buses DC no se rigen por los límites AC de caída de tensión, así
+        que quedan como UNKNOWN (no evaluados) y no cuentan como violación.
 
         Parameters
         ----------
@@ -76,6 +81,9 @@ class BusVoltageResult:
         bt_limit_pct : float
             Límite de caída de voltaje en BT (%). Default 8%.
         """
+        if self.is_dc:
+            self.compliance = ComplianceStatus.UNKNOWN
+            return self.compliance
         limit = mt_limit_pct if self.is_mt() else bt_limit_pct
         magnitude = abs(self.v_drop_pct)
         if magnitude > limit:

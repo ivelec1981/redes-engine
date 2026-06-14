@@ -136,13 +136,21 @@ class Bus:
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Bus) and self.id == other.id
 
+    def is_dc(self) -> bool:
+        """
+        ¿Es un bus de corriente continua (fast/ultra-fast charging)?
+        Los buses DC no se rigen por los límites ARCERNNR de caída de tensión
+        AC (±5% MT / ±8% BT), así que se excluyen de esa evaluación.
+        """
+        return self.level.name.startswith("DC")
+
     def is_mt(self) -> bool:
-        """¿Este bus pertenece a media tensión?"""
-        return self.voltage_kv >= 1.0
+        """¿Este bus pertenece a media tensión? (AC, ≥1 kV)"""
+        return (not self.is_dc()) and self.voltage_kv >= 1.0
 
     def is_bt(self) -> bool:
-        """¿Este bus pertenece a baja tensión?"""
-        return self.voltage_kv < 1.0
+        """¿Este bus pertenece a baja tensión? (AC, <1 kV)"""
+        return (not self.is_dc()) and self.voltage_kv < 1.0
 
 
 @dataclass

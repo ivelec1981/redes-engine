@@ -412,6 +412,7 @@ class TimeSeriesSolver:
 
             net_bus = self.net.buses.get(bus_id)
             v_nom = net_bus.voltage_kv if net_bus else v_nominal_ll
+            is_dc = net_bus.is_dc() if net_bus else False
             mt_limit = 5.0
             bt_limit = 8.0
             limit = mt_limit if v_nom >= 1.0 else bt_limit
@@ -423,9 +424,13 @@ class TimeSeriesSolver:
                 v_drop_pct=v_drop_pct,
                 angle_deg=0.0,
                 voltage_nominal_kv=v_nom,
+                is_dc=is_dc,
             )
             mag = abs(v_drop_pct)
-            if mag > limit:
+            if is_dc:
+                # Bus DC: los límites AC no aplican → no evaluado.
+                v_res.compliance = ComplianceStatus.UNKNOWN
+            elif mag > limit:
                 v_res.compliance = ComplianceStatus.VIOLATION
             elif mag > 0.8 * limit:
                 v_res.compliance = ComplianceStatus.WARNING

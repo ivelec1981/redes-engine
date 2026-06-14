@@ -194,6 +194,15 @@ class ComplianceAnalyzer:
 
     # ─────────────────────────────────────────────────────────────────────
     def _analyze_voltage(self, v: BusVoltageResult) -> ComplianceFinding:
+        # Los buses DC (fast charging) no se rigen por los límites ARCERNNR de
+        # caída de tensión AC → no evaluados (no cuentan como violación).
+        if getattr(v, "is_dc", False):
+            return ComplianceFinding(
+                severity=ComplianceStatus.UNKNOWN, category="voltaje",
+                element_id=v.bus_id,
+                actual_value=abs(v.v_drop_pct), limit_value=0.0, units="%",
+                message="Bus DC: límites AC de caída de tensión no aplican",
+            )
         limit = (self.limits.mt_voltage_drop_pct
                  if v.is_mt() else self.limits.bt_voltage_drop_pct)
         actual = abs(v.v_drop_pct)

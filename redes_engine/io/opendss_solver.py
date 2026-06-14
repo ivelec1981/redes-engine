@@ -227,6 +227,7 @@ class OpenDSSSolver:
                 v_drop_pct=v_drop_pct,
                 angle_deg=angle_deg,
                 voltage_nominal_kv=v_nominal_used,
+                is_dc=net_bus.is_dc() if net_bus else False,
             )
             voltage_result.evaluate_compliance(mt_limit_pct, bt_limit_pct)
             bus_results[voltage_result.bus_id] = voltage_result
