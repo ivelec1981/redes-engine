@@ -320,6 +320,13 @@ class TimeSeriesSolver:
             kvar = self.dispatcher.get_bess_kvar(
                 hour=hour, bess_state=state, v_pu=v_pu, freq_hz=nominal_freq,
             )
+            # Límite de cuadrante (4Q): la potencia aparente S=√(P²+Q²) del
+            # inversor no puede exceder su rating. Si P+Q lo superan, se recorta
+            # la reactiva (la activa tiene prioridad).
+            rated = state.rated_kw
+            if rated > 0:
+                max_q = max(rated * rated - power_kw * power_kw, 0.0) ** 0.5
+                kvar = max(-max_q, min(max_q, kvar))
             # Actualizar SoC (lógica interna) — una sola vez por hora
             state.apply_action(power_kw, dt_h=1.0)
 
@@ -486,6 +493,7 @@ class TimeSeriesSolver:
             losses_kw=losses_w[0] / 1000.0 if losses_w else 0.0,
             losses_kvar=(losses_w[1] / 1000.0
                          if losses_w and len(losses_w) > 1 else 0.0),
+            is_transformer=(kind == "Transformer"),
         )
         if loading > 100.0:
             flow.compliance = ComplianceStatus.VIOLATION

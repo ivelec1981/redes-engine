@@ -264,9 +264,14 @@ class InvestmentAnalyzer:
             if t == capex_year:
                 cf.capex_usd = -capex_total
 
-            if t > 0 or capex_year > 0:
-                # Inflación acumulada para OPEX y revenue
-                inflation_factor = (1.0 + self.a.inflation_rate) ** max(t - 1, 0)
+            # OPEX y beneficios solo DESPUÉS de ejecutar la inversión: el activo
+            # no opera (ni ahorra) antes de existir. Para capex_year>0 esto
+            # evita generar ingresos en años previos a la inversión.
+            if t > capex_year:
+                # Inflación acumulada (relativa al primer año de operación)
+                inflation_factor = (
+                    (1.0 + self.a.inflation_rate) ** (t - capex_year - 1)
+                )
 
                 # OPEX
                 cf.opex_om_usd = -capex_total * self.a.om_pct_of_capex_per_year

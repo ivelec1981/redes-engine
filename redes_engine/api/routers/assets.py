@@ -116,18 +116,16 @@ def add_asset(network_id: str, req: AddAssetRequest) -> AssetOut:
 @router.delete("/{network_id}/assets/{asset_id}",
                 status_code=status.HTTP_204_NO_CONTENT)
 def remove_asset(network_id: str, asset_id: str) -> None:
-    stored = _get_or_404(network_id)
-    net = stored.network
+    _get_or_404(network_id)
 
-    if asset_id not in net.assets:
+    # Borrado atómico bajo el lock del store, vía la API pública de Network
+    # (que mantiene consistente el índice por bus).
+    def _delete(stored) -> bool:
+        return stored.network.remove_asset(asset_id)
+
+    removed = get_store().mutate(network_id, _delete)
+    if not removed:
         raise HTTPException(status_code=404, detail="Asset not found")
-
-    # Borrar y reconstruir índices
-    asset = net.assets.pop(asset_id)
-    net._assets_by_bus[asset.bus_id] = [
-        aid for aid in net._assets_by_bus.get(asset.bus_id, [])
-        if aid != asset_id
-    ]
 
 
 # =============================================================================

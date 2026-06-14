@@ -43,9 +43,11 @@ def solve_powerflow(network_id: str, req: SolveRequest = SolveRequest()):
         with OpenDSSSolver(stored.network) as solver:
             converged = solver.solve()
             if not converged:
+                # No-convergencia es un resultado de negocio (red mal
+                # dimensionada), no un error del servidor → 422.
                 raise HTTPException(
-                    status_code=500,
-                    detail="OpenDSS no convergió",
+                    status_code=422,
+                    detail="OpenDSS no convergió (revise el dimensionamiento de la red)",
                 )
             result = solver.collect_results(
                 mt_voltage_limit_pct=req.mt_voltage_limit_pct,
@@ -56,8 +58,13 @@ def solve_powerflow(network_id: str, req: SolveRequest = SolveRequest()):
         # Cachear
         stored.last_solve_result = result
         stored.last_compliance_report = compliance
+    except HTTPException:
+        raise   # no re-envolver las respuestas HTTP intencionales (404/422/...)
     except OpenDSSNotAvailableError as e:
         raise HTTPException(status_code=501, detail=str(e))
+    except (ValueError, KeyError) as e:
+        # Datos de red inválidos → culpa del cliente (422)
+        raise HTTPException(status_code=422, detail=f"Red inválida: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Solver error: {e}")
 
@@ -117,6 +124,10 @@ def run_hosting_capacity(network_id: str, req: HostingRequest = HostingRequest()
             max_kw=req.max_kw,
         )
         stored.last_hosting_results = results
+    except HTTPException:
+        raise
+    except (ValueError, KeyError) as e:
+        raise HTTPException(status_code=422, detail=f"Red inválida: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hosting error: {e}")
 
@@ -155,6 +166,10 @@ def run_timeseries(network_id: str, req: TimeseriesRequest = TimeseriesRequest()
         solver = TimeSeriesSolver(network=stored.network, profiles=profiles)
         annual = solver.run(hours=req.hours, scenario_name=req.scenario_name)
         stored.last_annual_results = annual
+    except HTTPException:
+        raise
+    except (ValueError, KeyError) as e:
+        raise HTTPException(status_code=422, detail=f"Red inválida: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Timeseries error: {e}")
 

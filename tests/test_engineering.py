@@ -89,10 +89,10 @@ class TestMechanical:
             span_m=80.0, temperature_c=50.0,
         )
         T2 = solve_change_of_state(acsr_4_0, state1, state2)
-        # Tensión positiva
-        assert T2 > 0
-        # Con más temperatura, debe relajarse algo
-        assert T2 <= state1.tension_n * 1.05   # tolerancia por iteración numérica
+        # Con +50°C el conductor se dilata y la tensión cae sustancialmente.
+        # Valor esperado ≈ 3570 N (verificado): banda estrecha para detectar
+        # regresiones, no solo "positivo y menor".
+        assert 3000.0 < T2 < 4200.0
 
     def test_change_of_state_with_wind(self, acsr_4_0):
         state1 = MechanicalState(
@@ -116,16 +116,21 @@ class TestProtections:
         result = fault_current_3phase(voltage_kv=22.8, impedance_pu=0.05)
         assert isinstance(result, FaultCalculation)
         assert result.fault_type == "3-phase"
-        # I_3φ = V_LL/(√3·Z); con z_pu=0.05, base 100 MVA, V=22.8 kV
-        # → ~50.6 kA (cortocircuito típico cerca de fuente fuerte)
-        assert 30.0 <= result.current_ka <= 100.0
+        # I_3φ = V_LL/(√3·Z); con z_pu=0.05, base 100 MVA, V=22.8 kV → 50.6 kA
+        assert result.current_ka == pytest.approx(50.6, rel=0.02)
 
     def test_fault_phase_ground(self):
         result = fault_current_phase_to_ground(
             voltage_kv=22.8, z1_pu=0.05, z2_pu=0.05, z0_pu=0.10,
         )
         assert result.fault_type == "phase-ground"
-        assert result.current_ka > 0
+        # I_1φ = 3·V_fase/|Z1+Z2+Z0| → 38.0 kA (aserción estrecha: antes esta
+        # función tenía una variable muerta con √3 espurio que daría 21.9 kA).
+        assert result.current_ka == pytest.approx(38.0, rel=0.02)
+        # Potencia de cortocircuito coherente con la definición trifásica
+        assert result.power_mva == pytest.approx(
+            3 ** 0.5 * 22.8 * result.current_ka, rel=1e-6,
+        )
 
     def test_select_fuse_normal_load(self):
         # 75 kVA en 22.8 kV → ~1.9 A nominal

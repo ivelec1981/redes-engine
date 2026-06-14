@@ -18,6 +18,7 @@ Algoritmos sin dependencia de QGIS, OpenDSS o NumPy/SciPy
 """
 
 import math
+import warnings
 from dataclasses import dataclass
 from typing import Optional
 
@@ -163,7 +164,16 @@ def solve_change_of_state(
     g_lo = g(lo)
     g_hi = g(hi)
     if g_lo * g_hi > 0:
-        # Sin cambio de signo en la rama física — devolver T1 como fallback
+        # Sin cambio de signo en la rama física: la EEC no converge para estos
+        # datos. Avisamos en vez de enmascarar la no-convergencia como si la
+        # tensión "no cambiara".
+        warnings.warn(
+            "solve_change_of_state: no se encontró raíz en la rama física "
+            f"(T1={T1:.1f} N, L={L:.1f} m, t1={t1}°C→t2={t2}°C). "
+            "Se devuelve T1 como fallback.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return T1
 
     for _ in range(max_iterations):

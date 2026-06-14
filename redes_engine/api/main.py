@@ -55,11 +55,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS abierto (prototipo). Producción: restringir orígenes.
+# CORS. Por defecto API pública sin credenciales: allow_origins="*" sólo es
+# válido con allow_credentials=False (los navegadores rechazan "*" + creds).
+# Para restringir, definir REDES_ENGINE_CORS_ORIGINS="https://a.com,https://b.com".
+_cors_env = os.environ.get("REDES_ENGINE_CORS_ORIGINS", "").strip()
+if _cors_env:
+    _origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+    _allow_credentials = True
+else:
+    _origins = ["*"]
+    _allow_credentials = False
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_origins,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

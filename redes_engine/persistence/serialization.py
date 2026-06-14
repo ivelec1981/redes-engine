@@ -150,8 +150,14 @@ def dict_to_asset(d: Dict[str, Any]) -> Asset:
         capacity_factor=d.get("capacity_factor"),
         generation_profile=d.get("generation_profile"),
         socioeconomic_stratum=int(s) if s is not None else None,
-        has_roof_pv_potential=d.get("has_roof_pv_potential"),
-        roof_area_m2=d.get("roof_area_m2"),
+        has_roof_pv_potential=(
+            bool(roof) if (roof := d.get("has_roof_pv_potential")) is not None
+            else None
+        ),
+        roof_area_m2=(
+            float(area) if (area := d.get("roof_area_m2")) is not None
+            else None
+        ),
     )
 
 

@@ -95,6 +95,22 @@ class Network:
         self._assets_by_bus[asset.bus_id].append(asset.id)
         return asset
 
+    def remove_asset(self, asset_id: str) -> bool:
+        """
+        Elimina un asset y mantiene consistente el índice por bus.
+
+        Returns True si existía y se eliminó, False si no estaba.
+        """
+        asset = self.assets.pop(asset_id, None)
+        if asset is None:
+            return False
+        bucket = self._assets_by_bus.get(asset.bus_id)
+        if bucket is not None:
+            self._assets_by_bus[asset.bus_id] = [
+                aid for aid in bucket if aid != asset_id
+            ]
+        return True
+
     # =========================================================================
     # CONSULTAS
     # =========================================================================

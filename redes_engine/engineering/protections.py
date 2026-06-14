@@ -133,17 +133,19 @@ def fault_current_phase_to_ground(
         raise ValueError("Suma Z1+Z2+Z0 debe ser > 0")
     base_impedance = (voltage_kv ** 2) / base_mva
     z_ohm = z_total_pu * base_impedance
-    v_phase = voltage_kv / math.sqrt(3) * 1000.0
-    i_a = 3.0 * v_phase / (z_total_pu * base_impedance * math.sqrt(3))
-    # Aproximación: I_1φ ≈ 3·I_3φ / (suma Z secuencias)
-    i_3phase = (voltage_kv * 1000.0) / (math.sqrt(3) * (z1_pu * base_impedance))
-    i_1phase_a = 3.0 * i_3phase * z1_pu / z_total_pu
+    # I_1φ = 3·V_fase / |Z1+Z2+Z0|  (forma directa, sin pasos redundantes)
+    v_phase = voltage_kv / math.sqrt(3) * 1000.0   # V fase-neutro
+    i_1phase_a = 3.0 * v_phase / z_ohm
+    i_ka = i_1phase_a / 1000.0
+    # Potencia de cortocircuito trifásica equivalente (S = √3·V_LL·I),
+    # coherente con la definición usada en fault_current_3phase.
+    s_mva = math.sqrt(3) * voltage_kv * i_ka
     return FaultCalculation(
         fault_type="phase-ground",
         voltage_kv=voltage_kv,
         impedance_ohm=z_ohm,
-        current_ka=i_1phase_a / 1000.0,
-        power_mva=voltage_kv * (i_1phase_a / 1000.0) / math.sqrt(3),
+        current_ka=i_ka,
+        power_mva=s_mva,
     )
 
 

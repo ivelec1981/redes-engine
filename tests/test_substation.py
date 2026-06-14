@@ -141,8 +141,9 @@ class TestShortCircuit:
         )
         s.transformers = [trafo_10mva]
         ka = s.short_circuit_mt_bus_ka()
-        # Esperado entre 2 y 4 kA (rango realista)
-        assert 2.0 < ka < 4.5
+        # Valor esperado ≈ 2.92 kA (verificado): banda estrecha para detectar
+        # regresiones de la fórmula de Icc en barra MT.
+        assert ka == pytest.approx(2.92, rel=0.05)
 
     def test_two_transformers_increase_short_circuit(self,
                                                        trafo_10mva,

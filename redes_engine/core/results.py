@@ -126,6 +126,7 @@ class BranchFlowResult:
     losses_kw: float
     losses_kvar: float
     compliance: ComplianceStatus = ComplianceStatus.UNKNOWN
+    is_transformer: bool = False
 
     def evaluate_compliance(self,
                              warning_pct: float = 80.0,

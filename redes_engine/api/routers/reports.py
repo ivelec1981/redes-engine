@@ -7,6 +7,7 @@ Endpoint que genera reporte ejecutivo PDF/Word descargable.
 """
 
 import os
+import shutil
 import tempfile
 from datetime import datetime
 from typing import Literal, Optional
@@ -14,6 +15,7 @@ from typing import Literal, Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
 from ...reports import (
     ReportContext,
@@ -118,4 +120,6 @@ def generate_report(network_id: str, req: ReportRequest):
         path,
         media_type=media_type,
         filename=os.path.basename(path),
+        # Borrar el tempdir tras enviar la respuesta (evita fuga de disco).
+        background=BackgroundTask(shutil.rmtree, tmpdir, ignore_errors=True),
     )

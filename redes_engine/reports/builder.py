@@ -377,9 +377,9 @@ class ReportBuilder:
             "rows": [
                 [b.bus_id, f"{b.voltage_nominal_kv:.3f}",
                  f"{b.pv_hosting_kw:.1f}",
-                 b.pv_limiting_factor.value,
+                 getattr(b.pv_limiting_factor, "value", "—"),
                  f"{b.load_hosting_kw:.1f}",
-                 b.load_limiting_factor.value]
+                 getattr(b.load_limiting_factor, "value", "—")]
                 for b in hr.bus_results.values()
             ],
         })

@@ -313,8 +313,9 @@ class AnnualAggregator:
             if b.loading_pct > stats.loading_max_pct:
                 stats.loading_max_pct = b.loading_pct
                 stats.worst_hour = hour
-                # Trafo más cargado
-                if "T" in branch_id.upper() and b.loading_pct > self.peak_transformer_loading_pct:
+                # Trafo más cargado (por tipo real, no por substring del nombre)
+                if getattr(b, "is_transformer", False) and \
+                        b.loading_pct > self.peak_transformer_loading_pct:
                     self.peak_transformer_loading_pct = b.loading_pct
                     self.peak_transformer_id = branch_id
             if b.loading_pct > 100.0:

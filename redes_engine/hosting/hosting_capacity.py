@@ -16,6 +16,7 @@ Algoritmo principal:
 """
 
 import time
+import warnings
 from typing import Dict, List, Optional, Tuple
 
 from ..core.graph import Asset, AssetType, Bus
@@ -208,14 +209,30 @@ class HostingCapacityAnalyzer:
     # =========================================================================
     # HORAS CRÍTICAS
     # =========================================================================
+    def _profile_or_warn(self, name: str) -> List[float]:
+        """
+        Devuelve un perfil 8760h de `self.profiles`; si falta, avisa (en vez de
+        usar ceros silenciosamente, lo que degradaría las "horas críticas" a
+        simplemente las primeras n horas del año) y devuelve ceros.
+        """
+        prof = self.profiles.get(name)
+        if prof is None:
+            warnings.warn(
+                f"Perfil '{name}' ausente en profiles: las horas críticas no "
+                "serán representativas. Use ProfileLibrary.ecuador_default().",
+                RuntimeWarning, stacklevel=2,
+            )
+            return [0.0] * HOURS_PER_YEAR
+        return prof
+
     def _critical_hours_for_pv(self, n: int) -> List[int]:
         """
         Horas críticas para análisis PV: alta generación PV + baja carga.
         El "peor caso" para PV es cuando hay sobre-voltaje (mucha PV inyectando
         sin carga local que la consuma).
         """
-        pv_profile = self.profiles.get("pv_sierra", [0] * HOURS_PER_YEAR)
-        load_profile = self.profiles.get("residential_sierra", [0] * HOURS_PER_YEAR)
+        pv_profile = self._profile_or_warn("pv_sierra")
+        load_profile = self._profile_or_warn("residential_sierra")
 
         # Score = generación − consumo
         scores = [
@@ -231,8 +248,8 @@ class HostingCapacityAnalyzer:
         Horas críticas para análisis de carga: máxima demanda residencial,
         sin generación PV (típicamente noche).
         """
-        load_profile = self.profiles.get("residential_sierra", [0] * HOURS_PER_YEAR)
-        pv_profile = self.profiles.get("pv_sierra", [0] * HOURS_PER_YEAR)
+        load_profile = self._profile_or_warn("residential_sierra")
+        pv_profile = self._profile_or_warn("pv_sierra")
 
         scores = [
             load_profile[h] - pv_profile[h] * 0.5

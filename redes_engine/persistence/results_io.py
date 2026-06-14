@@ -38,7 +38,9 @@ def power_flow_to_dict(r: Any) -> Optional[Dict[str, Any]]:
         wb = r.worst_loaded_branch()
         if wb is not None:
             worst_loading_pct = float(wb.loading_pct)
-    except Exception:
+    except (AttributeError, TypeError, ValueError, KeyError):
+        # snapshot best-effort: si un resultado parcial no expone un atributo
+        # esperado, se omite ese campo en vez de abortar el guardado.
         pass
 
     return {
@@ -74,7 +76,9 @@ def hosting_results_to_dict(h: Any) -> Optional[Dict[str, Any]]:
                 "host_capacity_kw": float(getattr(b, "host_capacity_kw", 0.0)),
                 "limiting_factor": getattr(b, "limiting_factor", ""),
             })
-    except Exception:
+    except (AttributeError, TypeError, ValueError, KeyError):
+        # snapshot best-effort: si un resultado parcial no expone un atributo
+        # esperado, se omite ese campo en vez de abortar el guardado.
         pass
     return {
         "n_buses_analyzed": int(getattr(h, "n_buses_analyzed", 0)),
@@ -107,7 +111,7 @@ def compliance_report_to_dict(c: Any) -> Optional[Dict[str, Any]]:
     try:
         viol = c.violations()
         warn = c.warnings()
-    except Exception:
+    except (AttributeError, TypeError, ValueError, KeyError):
         viol, warn = [], []
     overall = getattr(c, "overall_status", None)
     overall_value = getattr(overall, "value", str(overall) if overall else "unknown")

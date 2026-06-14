@@ -333,3 +333,131 @@ class TestHostingPreExisting:
                 assert b.load_hosting_kw == 0.0
             if b.pv_limiting_factor == LimitingFactor.PRE_EXISTING:
                 assert b.pv_hosting_kw == 0.0
+
+
+# =============================================================================
+# Trafo más cargado: por tipo real (is_transformer), no por substring "T"
+# =============================================================================
+class TestTransformerDetection:
+
+    def test_peak_transformer_by_type_not_substring(self):
+        from redes_engine.core.results import (
+            BranchFlowResult, ComplianceStatus, PowerFlowResult,
+        )
+        from redes_engine.timeseries.aggregator import AnnualAggregator
+
+        def _result(line_load, trafo_load):
+            r = PowerFlowResult(converged=True, total_power_kw=10.0,
+                                net_power_kw=10.0, total_losses_kw=0.1)
+            # "LINE_T" contiene 'T' pero NO es trafo (el bug viejo lo elegía)
+            r.branch_flows["LINE_T"] = BranchFlowResult(
+                branch_id="LINE_T", p_kw=1, q_kvar=0, s_kva=1, current_a=1,
+                rated_a=100, loading_pct=line_load, losses_kw=0, losses_kvar=0,
+                compliance=ComplianceStatus.OK, is_transformer=False,
+            )
+            # "X1" es el trafo real (sin 'T' en el nombre)
+            r.branch_flows["X1"] = BranchFlowResult(
+                branch_id="X1", p_kw=1, q_kvar=0, s_kva=1, current_a=1,
+                rated_a=100, loading_pct=trafo_load, losses_kw=0, losses_kvar=0,
+                compliance=ComplianceStatus.OK, is_transformer=True,
+            )
+            return r
+
+        agg = AnnualAggregator()
+        agg.update(0, _result(10.0, 10.0))   # crea stats
+        agg.update(1, _result(99.0, 80.0))   # incrementa loading → dispara
+
+        # El pico de trafo debe ser X1 (80%), NO la línea "LINE_T" (99%)
+        assert agg.peak_transformer_id == "X1"
+        assert agg.peak_transformer_loading_pct == pytest.approx(80.0)
+
+
+# =============================================================================
+# Network.remove_asset mantiene el índice por bus consistente
+# =============================================================================
+class TestRemoveAsset:
+
+    def test_remove_asset_updates_index(self):
+        from redes_engine.core.graph import (
+            Asset, AssetType, Bus, BusType, VoltageLevel,
+        )
+        from redes_engine.core.network import Network
+
+        net = Network(name="n")
+        net.add_bus(Bus(
+            id="B1", geometry=(0, 0), voltage_kv=0.22,
+            level=VoltageLevel.BT_220_127, bus_type=BusType.MEDIDOR,
+        ))
+        net.add_asset(Asset(id="L1", bus_id="B1",
+                            asset_type=AssetType.LOAD_RESIDENCIAL, rated_kw=2))
+        net.add_asset(Asset(id="L2", bus_id="B1",
+                            asset_type=AssetType.LOAD_RESIDENCIAL, rated_kw=3))
+        assert net.remove_asset("L1") is True
+        assert "L1" not in net.assets
+        # El índice por bus ya no debe listar L1, pero sí L2
+        ids = [a.id for a in net.assets_at_bus("B1")]
+        assert ids == ["L2"]
+        # Eliminar algo inexistente devuelve False (sin excepción)
+        assert net.remove_asset("NOPE") is False
+
+
+# =============================================================================
+# Inversión: sin ingresos antes de ejecutar el CAPEX (capex_year>0)
+# =============================================================================
+class TestInvestmentCapexYear:
+
+    def test_no_revenue_before_capex_year(self):
+        from redes_engine.engineering import (
+            InvestmentAnalyzer, InvestmentAssumptions,
+        )
+        ana = InvestmentAnalyzer(InvestmentAssumptions(
+            horizon_years=5, inflation_rate=0.0,
+            indirect_costs_pct=0.0, contingency_pct=0.0,
+            om_pct_of_capex_per_year=0.05,
+        ))
+        r = ana.analyze(
+            capex_direct_usd=100_000,
+            annual_capacity_savings_usd=20_000,
+            capex_year=2,
+        )
+        # Años 0 y 1 (antes de invertir): sin OPEX ni ingresos
+        for t in (0, 1):
+            cf = r.cashflows[t]
+            assert cf.revenue_savings_usd == 0.0
+            assert cf.opex_om_usd == 0.0
+        # El CAPEX cae en el año 2
+        assert r.cashflows[2].capex_usd == pytest.approx(-100_000)
+        # Y a partir del año 3 sí hay ingresos
+        assert r.cashflows[3].revenue_savings_usd > 0
+
+
+# =============================================================================
+# Serialización: coerción de tipos de los campos socioeconómicos
+# =============================================================================
+class TestSerializationCoercion:
+
+    def test_roof_fields_coerced_from_strings(self):
+        from redes_engine.persistence.serialization import dict_to_asset
+
+        a = dict_to_asset({
+            "id": "L1", "bus_id": "B1", "asset_type": "LOAD_RESIDENCIAL",
+            "rated_kw": 2.0,
+            "socioeconomic_stratum": "4",      # string → int
+            "has_roof_pv_potential": 1,         # truthy → bool
+            "roof_area_m2": "85.5",            # string → float
+        })
+        assert a.socioeconomic_stratum == 4
+        assert a.has_roof_pv_potential is True
+        assert isinstance(a.roof_area_m2, float)
+        assert a.roof_area_m2 == pytest.approx(85.5)
+
+    def test_none_roof_fields_stay_none(self):
+        from redes_engine.persistence.serialization import dict_to_asset
+
+        a = dict_to_asset({
+            "id": "L1", "bus_id": "B1", "asset_type": "LOAD_RESIDENCIAL",
+            "rated_kw": 2.0,
+        })
+        assert a.socioeconomic_stratum is None
+        assert a.has_roof_pv_potential is None
+        assert a.roof_area_m2 is None

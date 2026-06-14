@@ -13,11 +13,13 @@ Formato legacy: JSON plano v1.0 (se sigue aceptando en `/load`).
 """
 
 import os
+import shutil
 import tempfile
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 from ...persistence import (
     RSProjectContainer,
@@ -88,6 +90,8 @@ def save_network_as_rsproj(network_id: str, opts: SaveOptions = SaveOptions()):
         path,
         media_type="application/zip",
         filename=os.path.basename(path),
+        # Borrar el tempdir tras enviar la respuesta (evita fuga de disco).
+        background=BackgroundTask(shutil.rmtree, tmpdir, ignore_errors=True),
     )
 
 

@@ -638,8 +638,10 @@ class GISImporter:
                 # Bus secundario: PRIMERO intentar snap a un poste BT cercano
                 bus_s_id = self._snap_to_existing_bt(net, pt)
                 if bus_s_id is None:
-                    # Si no hay poste BT cercano, crear uno virtual
-                    bus_s_id = f"{bus_p}_BT"
+                    # Si no hay poste BT cercano, crear uno virtual ÚNICO por
+                    # transformador. Sufijar con trafo_id evita que dos trafos
+                    # en el mismo poste compartan (y cortocircuiten) el bus BT.
+                    bus_s_id = f"{bus_p}_BT_{trafo_id}"
                     if bus_s_id not in net.buses:
                         net.add_bus(Bus(
                             id=bus_s_id,
